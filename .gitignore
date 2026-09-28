@@ -1,0 +1,27 @@
+# Blender Portable & Runtimes
+blender/
+blender.shared/
+blender.crt/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Agent & IDE configs
+.agents/
+.claude/
+.cursor/
+.codegraph/
+agent/
+data/
+skills/
+skills-lock.json
+external/
+
+# Blender working files
+*.blend
+*.blend1
+*.blend2

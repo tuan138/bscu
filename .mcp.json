@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "cmd.exe",
+      "args": [
+        "/c",
+        "codegraph",
+        "serve",
+        "--mcp"
+      ]
+    },
+    "blender": {
+      "type": "stdio",
+      "command": "mcp-blender",
+      "args": [
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "9876"
+      ]
+    }
+  }
+}

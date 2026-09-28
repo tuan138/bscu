@@ -1,0 +1,8 @@
+{
+  "exclude": [
+    "blender/**",
+    "blender.shared/**",
+    "blender.crt/**",
+    ".*/**"
+  ]
+}
