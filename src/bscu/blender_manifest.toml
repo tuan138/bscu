@@ -1,0 +1,13 @@
+schema_version = "1.0.0"
+id = "bscu"
+version = "1.0.0"
+name = "BSCU - Parametric 2.5D CNC Sculptor"
+tagline = "Parametric 2.5D CNC sculpting & relief generator with SDF"
+maintainer = "BSCU Team"
+type = "add-on"
+
+# Supported Blender versions
+blender_version_min = "4.2.0"
+license = ["GPL-3.0-or-later"]
+category = "3D View"
+tags = ["Mesh", "Sculpt", "Geometry Nodes", "Modeling", "UV"]

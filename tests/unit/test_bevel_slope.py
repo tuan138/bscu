@@ -2,9 +2,7 @@ import math
 import unittest
 
 
-def calculate_bevel_height(
-    dist: float, bevel_angle_deg: float, base_height: float
-) -> float:
+def calculate_bevel_height(dist: float, bevel_angle_deg: float, base_height: float) -> float:
     """Calculate bevel height from SDF distance, angle and clamp limit."""
     if dist <= 0:
         return 0.0

@@ -3,8 +3,6 @@ Headless smoke test for Level 2 debugging.
 Verifies Curve creation, Custom Properties assignment, and Geometry Nodes socket inspection.
 """
 
-import sys
-
 import bpy
 
 
@@ -34,10 +32,10 @@ def run_test():
     mod.node_group = node_group
 
     # In Blender 4.x/5.x, sockets are added via interface
-    in_geo = node_group.interface.new_socket(
+    node_group.interface.new_socket(
         name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
     )
-    out_geo = node_group.interface.new_socket(
+    node_group.interface.new_socket(
         name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
     )
     in_height = node_group.interface.new_socket(
@@ -48,9 +46,7 @@ def run_test():
     print(
         f"[Level 2 Test] Node Group interface sockets count: {len(node_group.interface.items_tree)}"
     )
-    assert len(node_group.interface.items_tree) == 3, (
-        "Failed to create required node sockets"
-    )
+    assert len(node_group.interface.items_tree) == 3, "Failed to create required node sockets"
 
     print("[Level 2 Test] Evaluating Dependency Graph...")
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -61,8 +57,4 @@ def run_test():
 
 
 if __name__ == "__main__":
-    try:
-        run_test()
-    except Exception as e:
-        print(f"[Level 2 Test] FAILED: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_test()

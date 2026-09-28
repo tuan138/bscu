@@ -135,6 +135,32 @@ Hệ thống tích hợp MCP Server cho phép AI Agent và Developer tương tá
      ```
      giúp đối tượng lập tức được zoom vào trung tâm màn hình, mang lại phản hồi thị giác tức thì cho người dùng.
 
+4. **Cơ Chế Hot-Reload Add-on Thời Gian Thực (In-Memory Hot Reload):**
+   - Khi chỉnh sửa code trong `src/bscu/`, không cần tắt/mở lại Blender.
+   - Kích hoạt lệnh hot-reload trực tiếp trong Blender hoặc gửi qua MCP:
+     ```python
+     bpy.ops.bscu.reload()
+     ```
+   - Module `src/bscu/core/reloader.py` tự động quét cây `sys.modules` và reload lại toàn bộ 8+ module con của BSCU trong **0.05 giây**.
+
+5. **Bộ Thẩm Định Chất Lượng Đóng Kín "1-Lệnh" (One-Command Quality Gate):**
+   - Lệnh tự động duy nhất để AI Agent tự kiểm tra và tự sửa:
+     ```bash
+     python scripts/verify_all.py
+     ```
+   - Tự động chạy qua 4 chốt chặn (Gates) trong < 5 giây:
+     1. Gate 1: Tuân thủ quy tắc file $\le 200$ dòng & Ruff linter.
+     2. Gate 2: 100% Unit test toán thuần (`pytest tests/unit/`).
+     3. Gate 3: Headless Blender integration test (`tests/run_tests.py`).
+     4. Gate 4: Đồng bộ CodeGraph (`codegraph sync`).
+   - Trả về exit code 0 khi tất cả đạt; exit code 1 kèm stack trace chi tiết khi có lỗi.
+
+6. **Đóng Gói Extension Chuẩn Blender 4.2+ & 5.x (`scripts/package_extension.py`):**
+   - Tự động thẩm định `blender_manifest.toml` và đóng gói thành `dist/bscu-{version}.zip`:
+     ```bash
+     python scripts/package_extension.py
+     ```
+
 ---
 
 ## 4. Quy Trình Thu Thập Dữ Liệu Khi Gặp Bug (Data Gathering Protocol)
