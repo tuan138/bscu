@@ -1,5 +1,5 @@
 ---
-description: "Quy chuẩn lập trình bắt buộc cho Blender Add-on và Python: file <= 200 dòng, đơn nhiệm, tách Pure Logic khỏi bpy, test tự động"
+description: "Quy chuẩn lập trình bắt buộc cho Blender Add-on và Python: file 300-500 dòng, đơn nhiệm, tách Pure Logic khỏi bpy, test tự động"
 globs: ["src/**/*.py", "tests/**/*.py"]
 alwaysApply: true
 ---
@@ -8,9 +8,9 @@ alwaysApply: true
 
 Mọi thao tác code trên các file nguồn (`src/**/*.py`) và file test (`tests/**/*.py`) phải tuân thủ nghiêm ngặt các quy định sau:
 
-1. **Giới hạn 150 - 200 dòng/file:**
-   - Tuyệt đối không viết file dài vượt quá 200 dòng.
-   - Nếu logic dài, tách ngay thành các sub-module hoặc helper files.
+1. **Giới hạn 300 - 500 dòng/file:**
+   - Tiêu chuẩn duy trì từ 300 - 500 dòng/file, tận dụng tối đa context window lớn của AI.
+   - Nếu vượt quá 500 dòng, bắt buộc phân rã thành các sub-module hoặc helper files.
 
 2. **Nguyên tắc Đơn nhiệm (Single Responsibility):**
    - Mỗi Operator 1 file: `src/bscu/operators/op_<action>.py`.

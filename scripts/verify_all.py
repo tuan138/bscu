@@ -13,7 +13,7 @@ import subprocess
 import time
 
 
-MAX_LINE_LIMIT = 200
+MAX_LINE_LIMIT = 500
 
 
 def log_header(title: str):
@@ -23,7 +23,7 @@ def log_header(title: str):
 
 
 def gate_1_rule_compliance() -> bool:
-    log_header("1. Rule Compliance & File Length (<= 200 lines)")
+    log_header("1. Rule Compliance & File Length (<= 300-500 lines)")
     violations = []
 
     # Check line counts in src and tests

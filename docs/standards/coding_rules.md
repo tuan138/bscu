@@ -5,12 +5,11 @@ Tài liệu này định nghĩa các quy tắc bắt buộc áp dụng khi viế
 ---
 
 ## 1. Giới hạn Kích thước File (File Length Limit)
-- **Quy tắc cứng:** Mỗi file mã nguồn `.py` **KHÔNG ĐƯỢC VƯỢT QUÁ 150 - 200 DÒNG**.
+- **Quy tắc chuẩn:** Mỗi file mã nguồn `.py` được duy trì trong khoảng **300 - 500 DÒNG**.
 - **Mục tiêu:**
-  - Đảm bảo AI Agent đọc trọn vẹn context trong 1 lần gọi tool mà không bị cắt tỉa.
-  - Loại bỏ nguy cơ xung đột diff (merge conflict / patch failed).
-  - Tối ưu hóa chi phí token và tốc độ phản hồi.
-- **Xử lý khi file dài hơn 200 dòng:** Bắt buộc tách nhỏ thành các sub-module hoặc hàm helper riêng biệt.
+  - Tận dụng tối đa Context Window lớn của AI Agent hiện đại, giúp Agent nắm trọn vẹn ngữ cảnh của cả một module logic mà không bị phân mảnh quá mức.
+  - Vẫn giữ code trong phạm vi tập trung cao độ, hạn chế lỗi diff conflict khi sửa code.
+- **Xử lý khi vượt ngưỡng:** Nếu file dài quá **500 dòng**, bắt buộc phải phân rã thành các sub-module hoặc hàm helper riêng biệt.
 
 ---
 

@@ -26,8 +26,9 @@ Thư mục `docs/` là nơi lưu trữ toàn bộ thông tin kiến trúc, kỹ 
 | :--- | :--- | :--- |
 | `brainstorming.md` | `docs/concept/brainstorming.md` | TDD đặc tả kỹ thuật, triết lý kiến trúc, công thức toán SDF, thuật toán UV Relax và lộ trình triển khai. |
 | `agent_setup.md` | `docs/tooling/agent_setup.md` | Hướng dẫn cấu hình CodeGraph MCP Server và bộ kỹ năng Superpowers cho AI coding agent. |
-| `coding_rules.md` | `docs/standards/coding_rules.md` | Quy chuẩn lập trình bắt buộc: giới hạn file <= 200 dòng, đơn nhiệm, tách Pure Logic khỏi bpy, test tự động. |
+| `coding_rules.md` | `docs/standards/coding_rules.md` | Quy chuẩn lập trình bắt buộc: file 300-500 dòng, đơn nhiệm, tách Pure Logic khỏi bpy, test tự động. |
 | `blender_debug_workflow.md` | `docs/debugging/blender_debug_workflow.md` | Quy trình debug 4 cấp độ: Unit test pure logic, Headless Blender, MCP Live Control (mcp-blender) và DAP Remote Debug. |
+| `autonomous_dev_loop.md` | `docs/workflows/autonomous_dev_loop.md` | Chu trình phát triển tự động 6 bước: Nhận yêu cầu -> Phân tích -> Tự code -> Tự test/sửa -> Bàn giao -> Cải tiến quy trình. |
 
 *(Bảng này sẽ được cập nhật liên tục mỗi khi có tài liệu mới được tạo ra).*
 

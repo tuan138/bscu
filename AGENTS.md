@@ -30,7 +30,7 @@
 
 ## 5. Development Conventions & Mandatory Rules
 > **BẮT BUỘC:** Mọi thao tác lập trình của AI Agent phải tuân thủ nghiêm ngặt quy chuẩn tại **`docs/standards/coding_rules.md`**:
-1. **Giới hạn kích thước file:** Mỗi file `.py` **KHÔNG ĐƯỢC VƯỢT QUÁ 150 - 200 DÒNG**. Vượt quá phải tách thành sub-module hoặc helper.
+1. **Giới hạn kích thước file:** Mỗi file `.py` duy trì trong khoảng **300 - 500 DÒNG** (tận dụng context window lớn của AI). Vượt quá 500 dòng phải phân rã thành sub-module hoặc helper.
 2. **Nguyên tắc Đơn nhiệm:** 1 Operator / 1 Node group / 1 UI Panel / 1 Property group trên 1 file riêng biệt.
 3. **Tách biệt Pure Logic:** Toàn bộ công thức toán và kiểu dữ liệu thuần để trong `src/bscu/core/` (tuyệt đối không import `bpy`).
 4. **Kiểm thử tự động (Smoke & Unit Tests):** Mọi thay đổi phải có test kiểm chứng (chạy Unit Test hoặc Headless `./blender/blender.exe -b --python tests/run_tests.py`).

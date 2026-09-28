@@ -31,8 +31,8 @@ Loại rule: **Native Sticky Rule (`RULES.md`) — Tự động áp dụng (alwa
 ## 3. QUY CHUẨN LẬP TRÌNH BẮT BUỘC (MANDATORY CODING RULES)
 
 ### 3.1. Giới hạn Kích thước File (File Length Limit)
-- **Quy tắc cứng:** Mỗi file `.py` **KHÔNG ĐƯỢC VƯỢT QUÁ 150 - 200 DÒNG**.
-- File tiến gần mốc 180 - 200 dòng phải chủ động phân rã thành các sub-module hoặc helper riêng biệt.
+- **Quy tắc chuẩn:** Mỗi file `.py` được duy trì trong khoảng **300 - 500 DÒNG** (phù hợp với Context Window lớn của AI Agent).
+- File vượt quá mốc **500 dòng** bắt buộc phải chủ động phân rã thành các sub-module hoặc helper riêng biệt.
 - Tuyệt đối cấm viết code dồn cục (Monolithic file).
 
 ### 3.2. Cấu trúc Module Chuẩn hóa (`src/bscu/`)
@@ -68,3 +68,16 @@ Mọi mã nguồn phải tuân thủ phân lớp nghiêm ngặt:
 ### 3.5. Đồng bộ & Tra cứu Đồ thị CodeGraph
 - **Trước khi sửa code:** Sử dụng `codegraph_explore` hoặc lệnh `codegraph query <symbol>` để kiểm tra phạm vi ảnh hưởng (Blast Radius).
 - **Sau khi sửa/thêm code:** Bắt buộc chạy `codegraph sync` để cập nhật đồ thị tri thức mã nguồn.
+
+---
+
+## 4. CHU TRÌNH PHÁT TRIỂN TỰ ĐỘNG & TỰ SỬA LỖI (AUTONOMOUS DEV & SELF-HEALING LOOP)
+Mọi tác vụ nhận từ người dùng phải vận hành theo đúng 6 bước trong **`docs/workflows/autonomous_dev_loop.md`**:
+1. **Nhận yêu cầu:** Xác lập phạm vi và không code vội vã.
+2. **Phân tích & Thước đo:** Dùng CodeGraph MCP kiểm tra blast radius; thiết lập tiêu chuẩn nghiệm thu định lượng.
+3. **Lập trình chuẩn mực:** File $\le 200$ dòng, tách biệt pure logic `src/bscu/core/` (không import `bpy`).
+4. **Vòng lặp tự kiểm thử & tự sửa lỗi:**
+   - Chạy `python scripts/verify_all.py`. Nếu gặp lỗi, tự đọc stack trace và tự sửa file cho tới khi **PASS 100% (Exit 0)**.
+   - Kiểm định thực tế qua MCP Socket (port 9876): Hot-reload `bpy.ops.bscu.reload()`, đo đạc kích thước và kiểm tra manifold.
+5. **Cải tiến quy trình:** Cập nhật ngay kinh nghiệm mới vào tài liệu quy trình tương ứng (không tạo file lesson riêng lẻ).
+6. **Bàn giao & Commit:** Báo cáo số liệu đo đạc, căn góc nhìn 3D Viewport cho người dùng, lưu Git commit và sẵn sàng cho vòng lặp tiếp theo.
