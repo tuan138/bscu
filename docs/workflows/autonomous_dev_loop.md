@@ -103,14 +103,19 @@ AI Agent tự động thực hiện chu trình kiểm tra đóng kín mà không
    - Gọi các tool đo đạc: `validate_dimensions`, `measure_surface_area`, `measure_volume`.
    - Gọi lệnh tự động căn góc nhìn: `bpy.ops.view3d.view_selected()` để hiển thị vật thể rõ ràng trước mắt người dùng.
 
-### Bước 5: Đúc Rút Kinh Nghiệm & Cập Nhật Quy Trình (Continuous Improvement)
-- Trong quá trình sửa lỗi hoặc chạy thử, nếu phát hiện ra:
-  - Một lỗi môi trường (Windows path, subprocess, socket timeout).
-  - Một sự cố Blender API (socket type mismatch, depsgraph update).
-  - Một kỹ thuật đo đạc/debug tối ưu hơn.
-- **BẮT BUỘC:** Cập nhật trực tiếp nội dung bổ sung vào tài liệu quy trình gốc (`docs/debugging/blender_debug_workflow.md` hoặc `docs/standards/coding_rules.md`).
-- **NGUYÊN TẮC BẤT DI BẤT DỊCH:** **Tuyệt đối không tạo file bài học (lesson) riêng lẻ** để bảo đảm tính duy nhất của thông tin (Single Source of Truth).
+### Bước 5: Kiểm Toán & Cải Tiến Quy Trình Qua Subagent (Session-Observer Protocol)
+Một subagent chuyên trách mang tên **`session-observer`** (`.omp/agents/session-observer.md`) được kích hoạt để thực hiện kiểm toán và cập nhật quy trình mà không làm gián đoạn luồng lập trình chính.
 
+1. **Ba Quy Luật Kích Hoạt Subagent (Activation Triggers):**
+   - **Quy luật 1 (Post-Fix / Post-Milestone Trigger):** Ngay sau khi giải quyết xong một chuỗi lỗi khó ($\ge 2$ lần thử sai) hoặc hoàn tất một mốc tính năng lớn, Agent tự động dispatch `session-observer`.
+   - **Quy luật 2 (Periodic Turn Threshold Trigger):** Cứ sau mỗi **5 - 8 turns** làm việc liên tục trong phiên, Agent kích hoạt `session-observer` để rà soát toàn bộ các thao tác đã thực hiện.
+   - **Quy luật 3 (Pre-Delivery Audit Trigger):** Trước khi bàn giao kết quả ở Bước 6, subagent rà soát lần cuối để đảm bảo mọi phát hiện mới đều đã được thể chế hóa vào tài liệu.
+
+2. **Nhiệm vụ Duy nhất của `session-observer`:**
+   - Rà soát transcript/lịch sử session, trích xuất nguyên nhân lỗi và phương án giải quyết đã thành công.
+   - Định vị tài liệu quy trình tương ứng trong `docs/` (`blender_debug_workflow.md`, `coding_rules.md`, v.v.).
+   - Sử dụng `edit` để cập nhật trực tiếp vào văn bản quy trình (In-Place Refinement).
+   - **NGUYÊN TẮC BẤT KHẢ XÂM PHẠM:** **Tuyệt đối không tạo file bài học/lesson riêng lẻ**; toàn bộ thông tin chỉ được phép tồn tại duy nhất tại một nguồn chân lý (Single Source of Truth).
 ### Bước 6: Bàn Giao & Lưu Trữ (Deliver & Commit)
 - Trình bày kết quả rõ ràng, súc tích cho người dùng:
   - Danh sách file đã tác động.

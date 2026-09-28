@@ -7,7 +7,7 @@ Thư mục `docs/` là nơi lưu trữ toàn bộ thông tin kiến trúc, kỹ 
 ## 1. Nguyên tắc Quản lý & Tổ chức Tài liệu
 
 1. **Đọc `docs/README.md` đầu tiên:** Mọi Agent/Developer khi tra cứu thông tin trong `docs/` đều phải đọc file này trước để nắm danh mục và cấu trúc tài liệu.
-2. **Tổ chức theo từng mảng (Domain Folders):** Mỗi mảng kiến thức/kỹ thuật được gom thành 1 thư mục riêng (ví dụ: `concept/`, `geometry_nodes/`, `python_addon/`, `lessons_learned/`).
+2. **Tổ chức theo từng mảng (Domain Folders):** Mỗi mảng kiến thức/kỹ thuật được gom thành 1 thư mục riêng (ví dụ: `concept/`, `standards/`, `debugging/`, `workflows/`, `tooling/`).
 3. **Quy ước đặt tên file `.md`:** Tên file ngắn gọn, phản ánh rõ ràng nội dung bên trong (dùng `snake_case` hoặc `kebab-case`).
 4. **Nguyên tắc Duy nhất (Single Source of Truth):**
    - Một nội dung/kiến thức **CHỈ TỒN TẠI TẠI 1 NƠI DUY NHẤT**, tuyệt đối không sao chép trùng lặp qua nhiều file.
