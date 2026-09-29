@@ -102,12 +102,31 @@ def _document_scale(root, result: SvgResult) -> Tuple[float, np.ndarray]:
     if not width or not height:
         result.issues.append("UNITS_MISSING: the file states no size, so it "
                              "was read at 96 pixels per inch")
-    # Without a viewBox, one user unit is one pixel. ``scale`` is millimetres
-    # per user unit throughout, so this is the reciprocal.
-    scale = 1.0 / PX_PER_MM
+    # Without a viewBox, a user unit is a pixel by the letter of the format.
+    # When the document states an absolute size, though, a CAD export means its
+    # own units by that size, and reading it as pixels would shrink a 100 mm
+    # plate to 26 mm with nothing on screen to say so. Absolute units are taken
+    # at their word; a bare number is a pixel, which is what the format says.
+    scale = 0.0
+    if _states_absolute(root):
+        scale = 1.0
+        result.issues.append(
+            "UNITS_INFERRED: the file gives no viewBox but states an absolute "
+            "size, so one user unit is read as one of those units")
+    else:
+        scale = 1.0 / PX_PER_MM
     result.width_mm = width or 0.0
     result.height_mm = height or 0.0
     return scale, np.zeros(2)
+
+
+def _states_absolute(root) -> bool:
+    """Whether the document's size is written in a real unit."""
+    for name in ("width", "height"):
+        value = root.get(name)
+        if value and str(value).strip().endswith(("mm", "cm", "in", "pt")):
+            return True
+    return False
 
 
 def _length_mm(value: Optional[str]) -> float:

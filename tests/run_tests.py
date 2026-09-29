@@ -69,9 +69,14 @@ def run_all_integration_tests():
 
         try:
             spec.loader.exec_module(module)
-            # If the module has a run_test function, call it
-            if hasattr(module, "run_test"):
-                module.run_test()
+            # A suite with no run_test has not run a single assertion. Calling
+            # that a pass is worse than useless: six suites once sat in this
+            # directory doing exactly that, and the gate stayed green.
+            if not hasattr(module, "run_test"):
+                raise AssertionError(
+                    f"{test_file} has no run_test(), so none of its tests were "
+                    f"executed; add one that runs the suite and fails loudly")
+            module.run_test()
             print(f"--> PASSED: {test_file}\n")
         except Exception:
             traceback.print_exc()

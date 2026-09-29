@@ -51,10 +51,18 @@ class TestUnits(unittest.TestCase):
         self.assertAlmostEqual(result.width_mm, 100.0)
         self.assertAlmostEqual(result.shapes[0]["length_mm"], 100.0)
 
-    def test_without_a_view_box_one_user_unit_is_one_pixel(self):
+    def test_a_bare_size_means_pixels_as_the_format_says(self):
         result = parse_svg(svg('<path d="M0 0 L96 0"/>', width="200", height="50"))
 
         self.assertAlmostEqual(result.shapes[0]["length_mm"], 25.4)
+
+    def test_an_absolute_size_is_taken_at_its_word_and_says_so(self):
+        """A 100 mm plate read as pixels would be 26 mm with nothing to show it."""
+        result = parse_svg(svg('<path d="M0 0 L50 0"/>', width="100mm",
+                               height="50mm"))
+
+        self.assertAlmostEqual(result.shapes[0]["length_mm"], 50.0)
+        self.assertTrue(any("UNITS_INFERRED" in issue for issue in result.issues))
 
     def test_a_view_box_with_the_wrong_number_of_values_is_reported(self):
         result = parse_svg(svg("", viewBox="0 0 100"))

@@ -32,7 +32,7 @@ def selection(context) -> list:
 
 def draw_panel(layout, context) -> None:
     """Draw the inspector."""
-    from . import op_draw
+    from ..operators import op_draw
 
     canvas = op_draw.canvas_for(context)
     column = layout.column(align=True)
@@ -78,7 +78,6 @@ class BSCU_PT_CanvasInspector(bpy.types.Panel):
 
     def draw(self, context):
         from ..operators import op_export
-        from ..operators.op_draw import draw_panel
 
         layout = self.layout
         from ..operators import op_canvas_mode
@@ -93,9 +92,7 @@ class BSCU_PT_CanvasInspector(bpy.types.Panel):
 
 def _link_summary(context) -> str:
     """How many links are broken, for the panel header."""
-    from .op_draw import canvas_for
-
-    del canvas_for, context
+    del context
     return f"no broken links ({BROKEN_CODE})"
 
 

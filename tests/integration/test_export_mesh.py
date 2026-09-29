@@ -195,5 +195,34 @@ class TestReliefThroughThePipeline(unittest.TestCase):
         self.assertLessEqual(float(field.evaluate(np.array([[0.0, 0.0]]))[0]), 2.0)
 
 
+
+
+def run_test():
+    """Run this suite, the way tests/run_tests.py expects.
+
+    The add-on is registered, not re-imported. Purging ``bscu`` and importing
+    it again would build a *second* copy of every module: the operators would
+    be registered from the new copy and would write to that copy's state, while
+    the test file still holds the old one. Everything would then look empty for
+    reasons that have nothing to do with the code under test.
+    """
+    import unittest
+
+    import bscu
+
+    bscu.register()
+    try:
+        result = unittest.TextTestRunner(verbosity=1).run(
+            unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
+        )
+    finally:
+        bscu.unregister()
+    if not result.wasSuccessful():
+        raise AssertionError(
+            f"{result.testsRun} test(s) ran, "
+            f"{len(result.failures)} failed and {len(result.errors)} errored")
+    print(f"[OK] {result.testsRun} test(s) passed in {__name__}")
+
+
 if __name__ == "__main__":
     unittest.main()
