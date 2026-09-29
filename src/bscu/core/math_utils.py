@@ -94,3 +94,23 @@ def similarity_fit(source: np.ndarray, target: np.ndarray) -> Similarity:
         dtype=np.float64,
     ) * scale
     return Similarity(scale, angle, dst.mean(axis=0) - src.mean(axis=0) @ rotation)
+
+
+def plane_frame(points3d: np.ndarray) -> np.ndarray:
+    """Flatten points onto the plane that best fits them, keeping two axes.
+
+    A chart has to start from somewhere, and a degenerate starting frame gives
+    the conformal solver nothing to work with. Projecting onto the best-fit
+    plane is the standard opening move, and it is also the honest way to ask
+    "how much would this chart distort if it were flattened", since that is
+    exactly what the projection produces.
+    """
+    points = np.asarray(points3d, dtype=np.float64).reshape(-1, 3)
+    if len(points) == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    centred = points - points.mean(axis=0)
+    if not np.any(centred):
+        return np.zeros((len(points), 2), dtype=np.float64)
+    values, vectors = np.linalg.eigh(centred.T @ centred)
+    axes = vectors[:, np.argsort(values)[::-1][:2]]
+    return centred @ axes
