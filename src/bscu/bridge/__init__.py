@@ -17,6 +17,9 @@ __all__ = [
 
 
 def shutdown():
-    """Restore anything the bridge left on the document."""
+    """Restore anything the bridge and the viewport handlers left behind."""
+    from .. import draw
+
     checker_overlay.clear_all()
     design_store.forget_all()
+    draw.shutdown()

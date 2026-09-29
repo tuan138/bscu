@@ -1,17 +1,20 @@
 """
-Viewport drawing for BSCU. Handlers attach on install and come off on shutdown.
+Viewport drawing for BSCU. Handlers attach on register and come off on unregister.
 """
 
-from . import seam_overlay  # noqa: F401
-
-__all__ = ["seam_overlay"]
+from . import seam_overlay
 
 
-def install():
+def register():
     """Attach the viewport handlers."""
     seam_overlay.install()
 
 
+def unregister():
+    """Detach them, so a reload does not stack handlers."""
+    seam_overlay.shutdown()
+
+
 def shutdown():
-    """Detach them again, so a reload does not stack handlers."""
+    """Called by the bridge on undo, redo and file load."""
     seam_overlay.shutdown()
