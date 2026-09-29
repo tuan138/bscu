@@ -17,6 +17,7 @@ from bpy.props import (
 )
 
 from ..bridge.design_store import DesignStore, ensure_design
+from ..registry import register_classes, unregister_classes
 
 ELEMENT_KIND_ITEMS = [
     ("STROKE", "Nét", "Đường vẽ tự do"),
@@ -52,15 +53,14 @@ CLASSES = (BSCU_PG_element, BSCU_PG_design)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    register_classes(CLASSES)
     bpy.types.Object.bscu_design = PointerProperty(type=BSCU_PG_design)
 
 
 def unregister():
-    del bpy.types.Object.bscu_design
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    unregister_classes(CLASSES)
+    if hasattr(bpy.types.Object, "bscu_design"):
+        del bpy.types.Object.bscu_design
 
 
 def attach(obj) -> None:

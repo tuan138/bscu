@@ -10,6 +10,7 @@ import bpy
 from bpy.props import EnumProperty
 
 from ..core.workflow import STEP_LABELS, STEP_ORDER
+from ..registry import register_classes, unregister_classes
 
 _STEP_ITEMS = [(step, STEP_LABELS[step], STEP_LABELS[step]) for step in STEP_ORDER]
 
@@ -29,12 +30,11 @@ CLASSES = (BSCU_PG_ui,)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    register_classes(CLASSES)
     bpy.types.WindowManager.bscu_ui = bpy.props.PointerProperty(type=BSCU_PG_ui)
 
 
 def unregister():
-    del bpy.types.WindowManager.bscu_ui
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    unregister_classes(CLASSES)
+    if hasattr(bpy.types.WindowManager, "bscu_ui"):
+        del bpy.types.WindowManager.bscu_ui

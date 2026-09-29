@@ -5,6 +5,7 @@ Operator for hot-reloading BSCU Add-on modules in live Blender session.
 import bpy
 
 from ..core.reloader import reload_bscu_modules
+from ..registry import register_classes, unregister_classes
 
 
 class BSCU_OT_Reload(bpy.types.Operator):
@@ -25,10 +26,8 @@ CLASSES = (BSCU_OT_Reload,)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    return register_classes(CLASSES)
 
 
 def unregister():
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    return unregister_classes(CLASSES)

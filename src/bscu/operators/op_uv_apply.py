@@ -14,6 +14,7 @@ puts it in front of the user.
 import bpy
 
 from ..bridge import uv_bridge
+from ..registry import register_classes, unregister_classes
 
 #: The candidate waiting to be applied, kept per object until it is decided on.
 _pending: dict = {}
@@ -73,10 +74,8 @@ CLASSES = (BSCU_OT_ApplyLayout,)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    return register_classes(CLASSES)
 
 
 def unregister():
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    return unregister_classes(CLASSES)

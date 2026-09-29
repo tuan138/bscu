@@ -17,9 +17,9 @@ bl_info = {
 try:
     import bpy
 
-    from . import bridge, draw, operators, properties, ui
+    from . import bridge, draw, nodes, operators, properties, ui
 
-    MODULES = (properties, ui, operators, draw)
+    MODULES = (properties, nodes, ui, operators, draw)
 except ImportError:
     bpy = None
     MODULES = ()

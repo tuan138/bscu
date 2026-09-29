@@ -8,6 +8,7 @@ this panel must not fake them.
 import bpy
 
 from ..core.draw_stock import draw_no_stock, draw_stock_summary
+from ..registry import register_classes, unregister_classes
 from .context import active_stock
 
 
@@ -60,10 +61,8 @@ CLASSES = (BSCU_PT_stock,)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    return register_classes(CLASSES)
 
 
 def unregister():
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    return unregister_classes(CLASSES)

@@ -9,6 +9,7 @@ import bpy
 
 from ..core.draw_steps import draw_step_row
 from ..core.workflow import STEP_ORDER, derive_step_status
+from ..registry import register_classes, unregister_classes
 from .context import collect_step_facts
 
 STEP_OPERATOR = "bscu.set_step"
@@ -56,10 +57,8 @@ CLASSES = (BSCU_OT_set_step, BSCU_PT_steps)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    return register_classes(CLASSES)
 
 
 def unregister():
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    return unregister_classes(CLASSES)

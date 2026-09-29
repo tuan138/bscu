@@ -10,6 +10,7 @@ animation play controls.
 import bpy
 
 from ..bridge import seam_bridge
+from ..registry import register_classes, unregister_classes
 
 
 def _target(context):
@@ -149,10 +150,8 @@ CLASSES = (
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    return register_classes(CLASSES)
 
 
 def unregister():
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    return unregister_classes(CLASSES)

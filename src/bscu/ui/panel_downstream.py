@@ -9,6 +9,7 @@ in UX-4 through UX-10.
 import bpy
 
 from ..core.draw_downstream import draw_gated_tab
+from ..registry import register_classes, unregister_classes
 from .context import collect_step_facts
 
 
@@ -56,10 +57,8 @@ CLASSES = (BSCU_PT_caro, BSCU_PT_layout, BSCU_PT_relief)
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
+    return register_classes(CLASSES)
 
 
 def unregister():
-    for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+    return unregister_classes(CLASSES)
