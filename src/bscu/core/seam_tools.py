@@ -42,27 +42,27 @@ def undirected_edges(faces: np.ndarray) -> np.ndarray:
     return np.sort(pairs, axis=2)
 
 
-def _vertex_adjacency(faces: np.ndarray) -> Dict[int, List[int]]:
-    """Neighbouring vertices over the mesh's own edges."""
+def _vertex_adjacency(edges) -> Dict[int, List[int]]:
+    """Neighbouring vertices over a given set of edges."""
     links: Dict[int, set] = {}
-    for row in undirected_edges(faces):
-        for left, right in row:
-            links.setdefault(int(left), set()).add(int(right))
-            links.setdefault(int(right), set()).add(int(left))
+    for left, right in np.asarray(edges, dtype=np.int64).reshape(-1, 2):
+        links.setdefault(int(left), set()).add(int(right))
+        links.setdefault(int(right), set()).add(int(left))
     return {vertex: sorted(neighbours) for vertex, neighbours in links.items()}
 
 
-def chain_between(faces: np.ndarray, start: int, goal: int) -> List[Edge]:
-    """The shortest walk over existing edges from one vertex to another.
+def chain_over_edges(edges, start: int, goal: int) -> List[Edge]:
+    """The shortest walk from one vertex to another over a given edge set.
 
-    This is a shortest path in the mesh's edge graph. On a curved surface the
-    geometrically shortest route is a different path, and the difference grows
-    with curvature; the tool is named for what it does rather than for
-    something it does not do.
+    The edge set matters. A quad mesh is stored as four-sided faces but solved
+    as triangles, and the diagonal the triangulation invents is not an edge the
+    mesh has - Blender can only mark a seam on an edge that exists. A chain
+    built from triangulated faces would be a perfectly good path and completely
+    impossible to apply, so the caller passes the real edges.
     """
     if start == goal:
         return []
-    links = _vertex_adjacency(faces)
+    links = _vertex_adjacency(edges)
     if start not in links or goal not in links:
         raise ChainError(f"vertex {start if start not in links else goal} "
                          f"is not on this mesh")
@@ -89,6 +89,17 @@ def chain_between(faces: np.ndarray, start: int, goal: int) -> List[Edge]:
         path.append(previous[path[-1]])
     path.reverse()
     return [(a, b) for a, b in zip(path, path[1:])]
+
+
+def chain_between(faces: np.ndarray, start: int, goal: int) -> List[Edge]:
+    """The shortest walk over a mesh's triangle edges from one vertex to another.
+
+    This is a shortest path in the mesh's edge graph. On a curved surface the
+    geometrically shortest route is a different path, and the difference grows
+    with curvature; the tool is named for what it does rather than for
+    something it does not do.
+    """
+    return chain_over_edges(undirected_edges(faces).reshape(-1, 2), start, goal)
 
 
 def edge_face_counts(faces: np.ndarray) -> Dict[Edge, List[int]]:
