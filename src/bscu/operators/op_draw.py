@@ -12,11 +12,13 @@ transaction, so one Ctrl+Z takes the whole corner back rather than leaving a
 half-finished one on the canvas.
 """
 
+import json
+
 import bpy
 import numpy as np
 
 from ..core.cad_ops import chamfer_corner, extend_line, fillet_corner, trim_line
-from ..core.geom2d import Line
+from ..core.geom2d import Arc, Line
 from ..draw import canvas_2d, snap
 from ..registry import register_classes, unregister_classes
 
@@ -27,17 +29,70 @@ _SCENES: dict = {}
 
 
 def canvas_for(context) -> canvas_2d.Canvas:
-    """The canvas for a scene, made on first use."""
+    """The canvas for a scene, made on first use and saved with the file.
+
+    The strokes go into the scene's own ID properties rather than staying in
+    memory: the spec asks that a save and reopen keeps the drawing, and a
+    drawing that only exists while Blender is open is not that.
+    """
     scene = context.scene
     found = _SCENES.get(scene.name)
     if found is None:
         found = canvas_2d.Canvas()
         _SCENES[scene.name] = found
+        _restore(scene, found)
     return found
 
 
+def _restore(scene, canvas: canvas_2d.Canvas) -> None:
+    """Read the canvas back out of the scene's own properties."""
+    stored = scene.get("bscu_strokes", "{}")
+    try:
+        payload = json.loads(stored)
+    except (TypeError, ValueError):
+        return
+    for name, pieces in payload.items():
+        canvas.add_stroke(name, [_rebuild(piece) for piece in pieces])
+
+
+def _rebuild(piece: dict):
+    """One stored piece back as geometry, arcs included.
+
+    The kind is stored rather than assumed. Reading every piece back as a line
+    would turn a filleted corner into two loose strokes the first time the file
+    was reopened, which looks like data loss to the user.
+    """
+    if piece.get("kind") == "arc":
+        return Arc(piece["centre"], piece["radius"],
+                   piece["start_deg"], piece["end_deg"])
+    return Line(piece["start"], piece["end"])
+
+
+def _persist(scene, canvas: canvas_2d.Canvas) -> None:
+    """Write the canvas into the scene, so saving the file saves the drawing."""
+    payload = {}
+    for name, shapes in canvas.strokes.items():
+        pieces = []
+        for shape in shapes:
+            if isinstance(shape, Arc):
+                pieces.append({
+                    "kind": "arc", "centre": list(shape.centre),
+                    "radius": shape.radius, "start_deg": shape.start_deg,
+                    "end_deg": shape.end_deg,
+                })
+            else:
+                pieces.append({"kind": "line", "start": list(shape.start),
+                               "end": list(shape.end)})
+        payload[name] = pieces
+    scene["bscu_strokes"] = json.dumps(payload)
+    scene["bscu_hidden"] = json.dumps(sorted(canvas.hidden))
+
+
 def forget(scene_name: str) -> None:
-    """Drop a scene's canvas, on file load where the old one is meaningless."""
+    """Drop a scene's in-memory canvas, on file load where it is meaningless.
+
+    The next read comes back from the file, which is the copy that is right.
+    """
     _SCENES.pop(scene_name, None)
 
 
@@ -66,6 +121,7 @@ class BSCU_OT_DrawLine(bpy.types.Operator):
             return {"CANCELLED"}
         name = f"stroke-{len(canvas.strokes) + 1:04d}"
         canvas.add_stroke(name, [stroke])
+        _persist(context.scene, canvas)
         if link is not None:
             self.report({"INFO"}, f"{name} snapped to a {link.kind} link")
         return {"FINISHED"}
@@ -102,6 +158,7 @@ class BSCU_OT_Corner(bpy.types.Operator):
         # back rather than leaving a half-finished one behind.
         name = f"corner-{len(canvas.strokes) + 1:04d}"
         canvas.add_stroke(name, list(result.pieces()))
+        _persist(context.scene, canvas)
         return {"FINISHED"}
 
 
@@ -129,6 +186,7 @@ class BSCU_OT_EditLine(bpy.types.Operator):
             return {"CANCELLED"}
         name = f"line-{len(canvas.strokes) + 1:04d}"
         canvas.add_stroke(name, [edited])
+        _persist(context.scene, canvas)
         return {"FINISHED"}
 
 
@@ -150,6 +208,7 @@ class BSCU_OT_CanvasVisibility(bpy.types.Operator):
         if not self.hide and not canvas.show(self.stroke):
             self.report({"WARNING"}, f"there is no stroke called {self.stroke}")
             return {"CANCELLED"}
+        _persist(context.scene, canvas)
         return {"FINISHED"}
 
 
@@ -167,6 +226,7 @@ class BSCU_OT_RemoveStroke(bpy.types.Operator):
         if not canvas.remove_stroke(self.stroke):
             self.report({"WARNING"}, f"there is no stroke called {self.stroke}")
             return {"CANCELLED"}
+        _persist(context.scene, canvas)
         return {"FINISHED"}
 
 
