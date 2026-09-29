@@ -19,14 +19,20 @@ from typing import Callable, Optional
 import numpy as np
 
 
-@dataclass(frozen=True)
+@dataclass
 class CSRMatrix:
-    """Compressed sparse row: indices, indptr and data, all numpy arrays."""
+    """Compressed sparse row: indices, indptr and data, all numpy arrays.
+
+    Mutable only for one reason: the row index used by the transpose is
+    derived data that would otherwise be rebuilt on every iteration. Nothing
+    that changes the matrix's contents is allowed to go through here.
+    """
 
     data: np.ndarray
     indices: np.ndarray
     indptr: np.ndarray
     shape: tuple
+    _row_index: Optional[np.ndarray] = None
 
     @classmethod
     def from_dense(cls, matrix: np.ndarray) -> "CSRMatrix":
@@ -97,16 +103,42 @@ class CSRMatrix:
             start, stop = self.indptr[row], self.indptr[row + 1]
             yield self.indices[start:stop], self.data[start:stop]
 
+    def _row_counts(self) -> np.ndarray:
+        return np.diff(self.indptr)
+
+    def _row_of_entry(self) -> np.ndarray:
+        """Which row each stored entry belongs to, built once and kept.
+
+        The transpose needs it every iteration, and rebuilding it each time
+        costs more than the multiplication it feeds.
+        """
+        if self._row_index is None or len(self._row_index) != len(self.data):
+            self._row_index = np.repeat(np.arange(self.shape[0]),
+                                        self._row_counts())
+        return self._row_index
+
     def dot(self, vector: np.ndarray) -> np.ndarray:
+        """Matrix times vector, in one pass over the stored values.
+
+        Written with ``reduceat`` rather than a loop because the whole point of
+        carrying our own sparse matrix is systems far too large to iterate in
+        Python: a chart of a hundred thousand triangles has millions of stored
+        entries, and a Python loop over them costs more than the entire solve.
+        """
+        data = np.asarray(vector, dtype=np.float64).ravel()[self.indices]
         out = np.zeros(self.shape[0], dtype=np.float64)
-        for row, (cols, values) in enumerate(self.rows()):
-            out[row] = values @ vector[cols]
+        counts = self._row_counts()
+        filled = counts > 0
+        if filled.any():
+            out[filled] = np.add.reduceat(self.data * data, self.indptr[:-1][filled])
         return out
 
     def transpose_dot(self, vector: np.ndarray) -> np.ndarray:
+        """Transpose times vector, by scattering each entry onto its column."""
+        scaled = self.data * np.asarray(vector, dtype=np.float64).ravel()[
+            self._row_of_entry()]
         out = np.zeros(self.shape[1], dtype=np.float64)
-        for row, (cols, values) in enumerate(self.rows()):
-            np.add.at(out, cols, values * vector[row])
+        np.add.at(out, self.indices, scaled)
         return out
 
     def __matmul__(self, vector: np.ndarray) -> np.ndarray:
