@@ -1,5 +1,7 @@
 """
 BSCU - Parametric 2.5D CNC Sculpting Workflow in Blender.
+
+Entry point only: import the sub-packages and let each one register itself.
 """
 
 bl_info = {
@@ -15,22 +17,24 @@ bl_info = {
 try:
     import bpy
 
-    from . import operators
+    from . import operators, properties, ui
+
+    MODULES = (properties, ui, operators)
 except ImportError:
     bpy = None
-    operators = None
+    MODULES = ()
 
 
 def register():
-    if operators:
-        operators.register()
-        print("[BSCU] Addon successfully registered.")
+    for module in MODULES:
+        module.register()
+    print("[BSCU] Addon successfully registered.")
 
 
 def unregister():
-    if operators:
-        operators.unregister()
-        print("[BSCU] Addon successfully unregistered.")
+    for module in reversed(MODULES):
+        module.unregister()
+    print("[BSCU] Addon successfully unregistered.")
 
 
 if __name__ == "__main__":

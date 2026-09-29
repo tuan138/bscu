@@ -8,6 +8,14 @@ import os
 import sys
 
 
+def _ensure_src_on_path():
+    """Make the bscu package importable from src/ inside Blender."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = os.path.join(root, "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+
+
 def run_all_integration_tests():
     print("=" * 60)
     print("STARTING BLENDER INTEGRATION TEST SUITE")
@@ -19,6 +27,8 @@ def run_all_integration_tests():
     if not os.path.exists(integration_dir):
         print(f"Directory not found: {integration_dir}", file=sys.stderr)
         sys.exit(1)
+
+    _ensure_src_on_path()
 
     test_files = [
         f
