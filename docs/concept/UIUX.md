@@ -711,6 +711,15 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 - **Chi phí chụp snapshot đã tối ưu có số liệu:** 13.1 ms ở 9 216 tam giác (1.42 µs/tam giác), ngoại suy 285 ms ở 200k tam giác. Vòng lặp Python theo mặt và dict cạnh là hai nút thắt đã loại bỏ (28 ms → gần 0) bằng argsort trên khóa int64; bản đồ cạnh giờ dựng **lazy** vì phần lớn nơi gọi chỉ cần đếm số mặt mỗi cạnh.
 - **Bộ ca nghiệm thu 200k tam giác của mục 3.7 (10 Hz) hiện chưa đạt với snapshot trên main thread.** Đây là lý do D10 bắt buộc có hai tầng: phần dựng hình thái phải chạy ngoài main thread.
 
+**Quyết định vận hành của UX-5/UX-7/UX-8 (đã code và kiểm chứng bằng số đo):**
+
+- **Hai tầng là hai thuật toán khác nhau, không phải cùng thuật toán với hai ngân sách.** Giải toàn chart có chi phí theo kích thước chart; giải cục bộ quanh vết cọ có chi phí theo kích thước vết. Đo trên chart dạng lõm, bán kính vết 6 mm: 6 962 mặt → giải cục bộ 73,7 ms; 28 322 mặt → 349 ms; **114 242 mặt → 47,7 ms (21 Hz)**. Số đỉnh trong bản vá là 311 / 1 138 / 1 098 — **không theo kích thước chart**, đó là tính chất cấu trúc cần giữ, không phải kết quả may mắn.
+- **Giải toàn chart vẫn chậm và không được kỳ vọng ngược lại:** 158 ms ở 6 962 mặt, 614 ms ở 28 322 mặt, 2 451 ms ở 114 242 mặt. Bộ ca 200k tam giác của mục 3.7 **không đạt** với giải toàn chart trên main thread. Mục tiêu "kết quả chuẩn hướng tới 2 giây" của mục 3.7 vì vậy chỉ đúng ở quy mô khoảng 100k mặt, không phải ở 200k.
+- **Chất lượng số đo phụ thuộc mô hình kiểm thử, phải nói rõ khi báo cáo.** Hai lần chạy cùng một ca 20k tam giác cho 2,98 s và 70,8 s: chênh lệch do lần đầu nạp BLAS/numpy trong tiến trình Blender, không phải do thuật toán. Số đo phải kèm mô hình kiểm thử và điều kiện nạp, nếu không là vô nghĩa.
+- **Cache theo từng chart là điều kiện cần, không phải tối ưu hoá.** Khoá per-chart gồm hình học, topology, vùng, revision UV và tham số solver của **chính chart đó**. Khoá gồm cả mesh sẽ làm mọi chart hết hạn mỗi lần một chart đổi — đúng cái chi phí mà hai tầng sinh ra để tránh. Đo: lần hai trên cùng trạng thái là **0,9 ms**.
+- **Lỗi solver phát hiện khi kiểm thử, đã sửa:** (1) ridge Tikhonov mặc định lớn ngang $\lambda_{min}$ dịch nghiệm — âm thầm sai; (2) hệ ghim bằng hàng phạt nặng làm điều kiện 1,2·10⁹ và CG báo "hội tụ" với nghiệm 5·10⁷; (3) vế phải hàng ghim phải là $w^2$ chứ không phải $w$; (4) `CSRMatrix.dot` lặp Python từng hàng — với hệ 200k biến số đó là hàng trăm triệu bước Python mỗi vòng lặp, đã thay bằng `reduceat` vector hoá.
+- **Lưới tứ giác là ca thử bắt buộc.** Chuỗi seam đi trên đồ thị cạnh của *tam giác hóa*, mà đường chéo tam giác hóa không phải cạnh của mesh và Blender **không đánh dấu seam được trên đó**. Chuỗi phải dựng từ `mesh.edges`.
+
 **Quyết định vận hành của UX-3 (đã code và kiểm chứng):**
 
 - **Slot overlay được nhận diện bằng vật liệu, không bằng tên.** `MaterialSlot.name` là read-only trong Blender, nên slot overlay được tìm bằng vật liệu `BSCU_Caro_Overlay` mà BSCU tự gán. Slot luôn là **OBJECT**; D2 cấm ép slot OBJECT của người dùng về DATA.
