@@ -14,6 +14,11 @@ import bpy
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
+# The add-on is auto-enabled from the installed copy at startup, so the
+# benchmark has to drop it or it measures whatever was last packaged.
+for _name in [m for m in sys.modules if m == "bscu" or m.startswith("bscu.")]:
+    del sys.modules[_name]
+
 from bscu.bridge.snapshot import take_snapshot
 from bscu.core.uv_islands import check_topology
 from bscu.core.uv_metrics import compute_face_metrics, summarise, with_scores

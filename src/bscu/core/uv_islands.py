@@ -192,15 +192,12 @@ def check_topology(faces: np.ndarray, edge_faces=None) -> TopologyReport:
     tris = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
 
     if tris.size:
-        distinct = np.sort(tris, axis=1)
-        _, first_index = np.unique(distinct, axis=0, return_index=True)
-        duplicate = int(tris.shape[0] - first_index.size)
-        malformed = int((distinct[:, 0] == distinct[:, 1]).sum())
-        malformed += int((distinct[:, 1] == distinct[:, 2]).sum())
+        first, second, third = _sorted_corners(tris)
+        duplicate = int(tris.shape[0] - np.unique(_face_keys(first, second, third)).size)
+        malformed = int((first == second).sum()) + int((second == third).sum())
     else:
         duplicate = 0
         malformed = 0
-
     if edge_faces is not None:
         counts = np.array([len(users) for users in edge_faces.values()])
     else:
@@ -214,4 +211,30 @@ def check_topology(faces: np.ndarray, edge_faces=None) -> TopologyReport:
         non_manifold_edges=non_manifold,
         duplicate_faces=duplicate,
         malformed_faces=malformed,
+    )
+
+
+def _sorted_corners(tris: np.ndarray) -> tuple:
+    """The three vertex indices of each face in ascending order.
+
+    A face and its reverse describe the same face, so they have to produce the
+    same key or a duplicate goes unnoticed.
+    """
+    a, b, c = tris[:, 0], tris[:, 1], tris[:, 2]
+    low = np.minimum(np.minimum(a, b), c)
+    high = np.maximum(np.maximum(a, b), c)
+    middle = a + b + c - low - high
+    return low, middle, high
+
+
+def _face_keys(low, middle, high) -> np.ndarray:
+    """One int64 per face from its sorted corners.
+
+    A row sort over floats cost most of the topology check on 200k faces.
+    """
+    stride = int(high.max(initial=0)) + 1
+    return (
+        low.astype(np.int64) * stride * stride
+        + middle.astype(np.int64) * stride
+        + high.astype(np.int64)
     )
