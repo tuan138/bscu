@@ -79,5 +79,5 @@ Mọi tác vụ nhận từ người dùng phải vận hành theo đúng 6 bư�
 4. **Vòng lặp tự kiểm thử & tự sửa lỗi:**
    - Chạy `python scripts/verify_all.py`. Nếu gặp lỗi, tự đọc stack trace và tự sửa file cho tới khi **PASS 100% (Exit 0)**.
    - Kiểm định thực tế qua MCP Socket (port 9876): Hot-reload `bpy.ops.bscu.reload()`, đo đạc kích thước và kiểm tra manifold.
-5. **Kiểm toán & Cải tiến qua Subagent `session-observer`:** Tự động kích hoạt subagent `session-observer` (theo 3 quy luật: sau khi fix lỗi, định kỳ 5-8 turns, hoặc trước khi bàn giao) để đúc rút bài học và cập nhật trực tiếp vào file quy trình tương ứng (tuyệt đối không tạo file lesson riêng lẻ).
+5. **Kiểm toán & Cải tiến qua Subagent `session-observer`:** Chỉ kích hoạt khi hoàn thành một tác vụ kỹ thuật và chuẩn bị dừng lại bàn giao (bỏ qua hoàn toàn cơ chế đếm turn và các câu hỏi đáp thông thường không đụng đến code) để đúc rút bài học và cập nhật trực tiếp vào file quy trình tương ứng (tuyệt đối không tạo file lesson riêng lẻ).
 6. **Bàn giao & Commit:** Báo cáo số liệu đo đạc, căn góc nhìn 3D Viewport cho người dùng, lưu Git commit và sẵn sàng cho vòng lặp tiếp theo.

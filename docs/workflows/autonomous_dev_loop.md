@@ -106,11 +106,9 @@ AI Agent tự động thực hiện chu trình kiểm tra đóng kín mà không
 ### Bước 5: Kiểm Toán & Cải Tiến Quy Trình Qua Subagent (Session-Observer Protocol)
 Một subagent chuyên trách mang tên **`session-observer`** (`.omp/agents/session-observer.md`) được kích hoạt để thực hiện kiểm toán và cập nhật quy trình mà không làm gián đoạn luồng lập trình chính.
 
-1. **Ba Quy Luật Kích Hoạt Subagent (Activation Triggers):**
-   - **Quy luật 1 (Post-Fix / Post-Milestone Trigger):** Ngay sau khi giải quyết xong một chuỗi lỗi khó ($\ge 2$ lần thử sai) hoặc hoàn tất một mốc tính năng lớn, Agent tự động dispatch `session-observer`.
-   - **Quy luật 2 (Periodic Turn Threshold Trigger):** Cứ sau mỗi **5 - 8 turns** làm việc liên tục trong phiên, Agent kích hoạt `session-observer` để rà soát toàn bộ các thao tác đã thực hiện.
-   - **Quy luật 3 (Pre-Delivery Audit Trigger):** Trước khi bàn giao kết quả ở Bước 6, subagent rà soát lần cuối để đảm bảo mọi phát hiện mới đều đã được thể chế hóa vào tài liệu.
-
+1. **Quy Luật Kích Hoạt Subagent (Activation Trigger):**
+   - **Hoàn thành tác vụ kỹ thuật (Post-Task Completion):** Chỉ kích hoạt duy nhất sau khi hoàn thành trọn vẹn một tác vụ kỹ thuật (code, test, refactor, debug) và chuẩn bị dừng lại bàn giao cho người dùng.
+   - **Loại trừ tuyệt đối:** Bỏ qua hoàn toàn cơ chế đếm turn định kỳ và các câu hỏi đáp thông thường (tra cứu lý thuyết, hướng dẫn cấu hình CLI...) để không làm gián đoạn mạch làm việc.
 2. **Nhiệm vụ Duy nhất của `session-observer`:**
    - Rà soát transcript/lịch sử session, trích xuất nguyên nhân lỗi và phương án giải quyết đã thành công.
    - Định vị tài liệu quy trình tương ứng trong `docs/` (`blender_debug_workflow.md`, `coding_rules.md`, v.v.).

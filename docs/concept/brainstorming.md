@@ -1,7 +1,7 @@
 # TÀI LIỆU THIẾT KẾ KỸ THUẬT (TECHNICAL DESIGN DOCUMENT - TDD)
 **Dự án:** Hệ thống Điêu khắc CNC 2.5D Tham số hóa trên Blender
 *(Parametric 2.5D CNC Sculpting Workflow in Blender)*
-**Phiên bản:** 1.0.0 | **Loại tài liệu:** Đặc tả Kiến trúc & Thuật toán
+**Phiên bản:** 1.1.0 | **Loại tài liệu:** Đặc tả Kiến trúc & Thuật toán
 
 ---
 
@@ -10,10 +10,10 @@
 2. [TRIẾT LÝ KIẾN TRÚC LÕI (CORE ARCHITECTURE)](#2-triết-lý-kiến-trúc-lõi)
 3. [KIẾN TRÚC HỆ THỐNG 3 TẦNG (THREE-TIER ARCHITECTURE)](#3-kiến-trúc-hệ-thống-3-tầng)
 4. [MÔ HÌNH DỮ LIỆU (DATA MODEL & METADATA)](#4-mô-hình-dữ-liệu-data-model)
-5. [ĐẶC TẢ THUẬT TOÁN (ALGORITHMS & DATA FLOW)](#5-đặc-tả-thuật-toán)
-6. [LUỒNG TRẢI NGHIỆM NGƯỜI DÙNG (USER WORKFLOW)](#6-luồng-trải-nghiệm-người-dùng)
-7. [LỘ TRÌNH TRIỂN KHAI (IMPLEMENTATION ROADMAP)](#7-lộ-trình-triển-khai)
-
+5. [KIẾN TRÚC STUDIO 2D CAD & GIAO DIỆN (HYBRID VIEWPORT)](#5-kiến-trúc-studio-2d-cad--giao-diện)
+6. [ĐẶC TẢ THUẬT TOÁN (ALGORITHMS & DATA FLOW)](#6-đặc-tả-thuật-toán)
+7. [LUỒNG TRẢI NGHIỆM NGƯỜI DÙNG (USER WORKFLOW)](#7-luồng-trải-nghiệm-người-dùng)
+8. [LỘ TRÌNH TRIỂN KHAI (IMPLEMENTATION ROADMAP)](#8-lộ-trình-triển-khai)
 ---
 
 <h2 id="1-tổng-quan-dự-án">1. TỔNG QUAN DỰ ÁN</h2>
@@ -99,69 +99,122 @@ Kiến trúc luồng dữ liệu (Data Pipeline) chảy một chiều qua 3 tầ
 
 ---
 
-<h2 id="5-đặc-tả-thuật-toán">5. ĐẶC TẢ THUẬT TOÁN (ALGORITHMS)</h2>
+<h2 id="5-kiến-trúc-studio-2d-cad--giao-diện">5. KIẾN TRÚC STUDIO 2D CAD & GIAO DIỆN (HYBRID VIEWPORT - PHƯƠNG ÁN B)</h2>
 
-### 5.1. Thuật toán SDF (Signed Distance Field) - Tạo khối độ nét vô cực
-Logic cụm Node bên trong Tầng 2:
-1. **Input:** Nhận Curve Kín -> Dùng `Fill Curve` bít mặt lại thành lưới N-gons.
-2. **Lấy Viền (Boundary):** Dùng `Mesh to Curve` (Chỉ lấy viền) -> Ra sợi dây chu vi.
-3. **Đo Khoảng cách (Proximity):** Dùng `Geometry Proximity`. Đo khoảng cách ngắn nhất từ mỗi điểm ảnh (Point) bên trong mặt lưới đập ra sợi dây chu vi.
-4. **Gán biến:** Lưu khoảng cách này thành thuộc tính `$Dist`. ($Dist = 0 ở viền, lớn dần khi vào tâm).
-5. **Dựng Khối (Beveling Math):**
-   - Dùng `Math: Multiply` -> Lấy `$Dist` nhân với $Tan(cnc\_bevel\_angle)$.
-   - Dùng `Math: Minimum` -> Khống chế chiều cao trần không được vượt quá `cnc_base_height` (chống lỗi đâm thủng khối ở các góc nhọn).
-6. **Định hình (Profile):** Đưa kết quả qua đồ thị `Float Curve`. Đồ thị tuyến tính = Vát chóp; Đồ thị vòng cung = Khối vòm.
-7. **Output:** Lưu thành thuộc tính `$Z_Height_Virtual`.
+Hệ thống giao diện 2D Canvas được thiết kế chuyên biệt theo mô hình **3 Cột tương tác (3-Pane Studio)**, phối hợp giữa UI Panels chuẩn của Blender và GPU Shading Engine thời gian thực:
 
-### 5.2. Thuật toán Dàn đều Lưới (UV Relax / ARAP Engine)
+```
++--------------------+------------------------------------------+-----------------------+
+|  LEFTBAR (Layers)  |         CENTERBAR (2D CAD Canvas)        |  RIGHTBAR (Inspector) |
++--------------------+------------------------------------------+-----------------------+
+| [Eye] [Lock] [Add] | - Navigation: Pan (MMB), Zoom (Scroll)   | [Context: Line/Region]|
+|                    | - Snap: End, Mid, Nearest, Intersect     | - Height: 10.0mm      |
+| [>] Group 1        | - Draw: Line, Arc 3-pt, Spline           | - Blend: Add / Sub    |
+|   [*] Layer Nét vẽ | - Edit: Fillet, Chamfer, Trim, Extend    |                       |
+|   [o] Layer Màu sắc| - Associativity: Sửa nét -> Vùng tự nhảy | [Biểu đồ Spline dốc]  |
+|   [#] Layer Vùng   | - Region Manipulator: Mạng lưới đường    |   /‾‾\____  (Dot sel) |
+|                    |   sinh dốc (UV Grid) & Dot kéo thả       |                       |
+| (Drag-drop z-order)|   trực tiếp trên Viewport 2D             | [Biểu đồ Cắt vuông góc|
++--------------------+------------------------------------------+-----------------------+
+```
+
+### 5.1. Leftbar — Quản lý Layer phân tầng (Photoshop Style)
+- **Công cụ trên Header:** Bật/tắt ẩn hiện Layer được chọn, nút Tạo mới Layer, nút Tạo Nhóm Layer (Layer Group).
+- **Tương tác danh sách:**
+  - Hỗ trợ Kéo thả (Drag & Drop) để sắp xếp thứ tự hiển thị ($Z$-Order: Layer nằm trên sẽ đè và hiển thị phía trên trong Centerbar).
+  - Đầu mỗi Layer có icon Mắt (`Eye`) để ẩn/hiện và icon Khóa (`Lock`) để chống chỉnh sửa vô ý.
+- **3 Kiểu Layer chuyên dụng (Thiết lập qua chuột phải):**
+  1. **Layer Nét vẽ (Carving Stroke):** Chứa các đường vector dẫn đường. Thuật toán điêu khắc sẽ lấy các đường trong layer này để tính toán rãnh vát, chạm khắc dọc đường nét.
+  2. **Layer Màu sắc (Color Tint):** Dùng để xác định vùng hoặc đường (có độ dày) để tô màu sắc và phân định vật liệu bề mặt.
+  3. **Layer Vùng (Bounded Region):** Nơi chứa các vùng khép kín tự động sinh ra từ các nét kín của *Layer Nét vẽ*.
+
+### 5.2. Centerbar — Môi trường tương tác 2D CAD & Lưới nắn dốc (CAD Workspace)
+- **Thao tác khung nhìn:** Zoom bằng cuộn chuột giữa (Scroll), Pan bằng giữ chuột giữa (MMB Drag), Quét chọn vùng (Marquee / Box Select).
+- **Bắt điểm thông minh (Smart Snapping):** Bắt điểm đầu/cuối (Endpoints), trung điểm (Midpoints), điểm nằm trên đường (On-Curve), và giao điểm các đường (Intersections).
+- **Bộ công cụ vẽ & biến đổi hình học:**
+  - Vẽ đoạn thẳng (Line), vẽ cung tròn qua 3 điểm (Arc 3-point), vẽ đường cong Spline.
+  - Khi chọn đường Spline hoặc đoạn thẳng: Lập tức hiển thị các điểm neo (Anchor points & Tangent handles) để co kéo trực quan.
+  - Công cụ CAD hình thái: Bo góc (Fillet), Vát góc (Chamfer), Kéo dài (Extend), Cắt tỉa đoạn thừa (Trim), Di chuyển (Move).
+- **Tính liên đới hình học (Topological Associativity):**
+  - Nét vẽ và Vùng kín duy trì quan hệ đồ thị phẳng (Planar Graph).
+  - Khi thay đổi bất kỳ đường nét nào cấu thành nên một Vùng kín, Vùng đó sẽ tự động cập nhật lại diện tích và biên dạng tức thì.
+- **Bộ nắn đường sinh dốc (Region Slope Grid Manipulator):**
+  - Khi một Vùng được chọn, trên mặt phẳng 2D hiển thị mạng lưới các đường sinh dốc ngang/dọc (Patch Flow Lines).
+  - Các giao điểm của lưới là các điểm điều khiển (Dots). Người dùng có thể kéo thả các Dot này để tinh chỉnh cao độ và độ dốc cục bộ của mặt phù điêu.
+
+### 5.3. Rightbar — Bảng thuộc tính ngữ cảnh & Biểu đồ dốc 2 cấp (Inspector)
+- **Tự động đổi ngữ cảnh theo Selection:**
+  - Chọn Đường $\to$ Hiển thị công cụ biên tập đường, độ sâu đục rãnh, profile dao cắt.
+  - Chọn Vùng $\to$ Hiển thị công cụ biên tập diện tích, độ cao đắp ($Add$) / khoét lõm ($Subtract$).
+- **Hệ thống Biểu đồ Đôi (Dual-Spline Profile Editor):**
+  - *Spline 1 (Biểu đồ chính):* Đường cong thể hiện sự biến thiên độ dốc/chiều cao theo biên dạng (tương tự đồ thị Curve trong 3ds Max). Trên đường cong có các điểm neo (Dots) để thay đổi vị trí.
+  - *Spline 2 (Biểu đồ cắt vuông góc):* Khi click chọn 1 Dot trên Spline 1, một biểu đồ thứ hai xuất hiện để hiệu chỉnh riêng cho Dot này:
+    - *Đối với Vùng:* Định nghĩa độ dốc của phương vuông góc với điểm đó.
+    - *Đối với Đường:* Định nghĩa cao độ hoặc độ sâu tại vị trí lát cắt.
+
+---
+
+<h2 id="6-đặc-tả-thuật-toán">6. ĐẶC TẢ THUẬT TOÁN (ALGORITHMS & DATA FLOW)</h2>
+
+### 6.1. Thuật toán Lõi SDF — Lưới lấy mẫu chuẩn hóa (Uniform Sampling Grid Engine)
+*Khắc phục triệt để hạn chế của nút `Fill Curve` (vốn chỉ nối tam giác ở biên mà không có đỉnh nội suy ở tâm).*
+1. **Sinh lưới chuẩn (Grid Generation):** Tầng 2 tạo lưới phẳng Quad đồng nhất (`Grid` primitive) bao trùm Canvas với độ phân giải bước lưới tham số hóa (ví dụ: `step = 0.2mm - 0.5mm`).
+2. **Mặt nạ trong/ngoài (Raycast In-Out Masking):** 
+   - Bít kín các đường Curve của *Layer Vùng* thành mặt phẳng tạm.
+   - Dùng tia chiếu `Raycast` từ trên trục $Z$ xuống: Các đỉnh của Grid đâm trúng mặt phẳng $\to$ Gán thuộc tính `$Inside = 1.0$; các đỉnh nằm ngoài gán `$Inside = 0.0$.
+3. **Đo khoảng cách (Geometry Proximity):**
+   - Với các đỉnh có `$Inside = 1.0$`, dùng `Geometry Proximity` (Target: Viền Curve khép kín) để đo khoảng cách ngắn nhất $Dist$ từ đỉnh lưới ra chu vi.
+4. **Dựng độ dốc vát & Chặn trần (Bevel Slope & Clamp):**
+   - $Height_{raw} = Dist \times \tan(cnc\_bevel\_angle)$.
+   - $Height_{clamped} = \min(Height_{raw}, cnc\_base\_height)$.
+5. **Định hình Profile đa cấp:** 
+   - Đưa giá trị qua đồ thị `Float Curve` (Spline 1 & Spline 2 do Rightbar nạp vào qua Geometry Node inputs) để sinh ra khối Vòm cong hoặc Chóp nhọn.
+6. **Output:** Xuất thuộc tính độ cao ảo `$Z_Height_Virtual` trên toàn bộ đỉnh của lưới.
+
+### 6.2. Thuật toán Dàn đều Lưới (UV Relax / ARAP Engine)
 Để giải quyết bài toán chống méo (Distortion):
 1. Khi User rạch phôi (Mark Seam) và bấm nút trải, hệ thống gọi API: `bpy.ops.uv.unwrap(method='CONFORMAL')` để bảo toàn góc 90 độ của ô Caro.
 2. Sau đó, tự động gọi API: `bpy.ops.uv.minimize_stretch(iterations=100)`. Thuật toán hệ lò xo (As-Rigid-As-Possible) sẽ tự động trượt các đỉnh trên 2D để dàn đều lực căng, giúp Caro ở mọi vị trí trên phôi to bằng nhau.
 
 ---
 
-<h2 id="6-luồng-trải-nghiệm-người-dùng">6. LUỒNG TRẢI NGHIỆM NGƯỜI DÙNG (USER WORKFLOW)</h2>
-*(Tối giản "Idiot-proof" cho người không rành 3D)*
+<h2 id="7-luồng-trải-nghiệm-người-dùng">7. LUỒNG TRẢI NGHIỆM NGƯỜI DÙNG (USER WORKFLOW)</h2>
 
-1. **Chuẩn bị Phôi (Môi trường 3D):**
-   - Mở Tượng/Phôi 3D.
-   - Vạch đường rạch cắt (Seam) tại nách, gầm, sống lưng.
-   - Bấm nút `[Khởi tạo Phôi]`. Giao diện tự chia 2 màn hình, Caro dàn đều tăm tắp.
-2. **Vẽ / Nhập Hoa văn (Môi trường 2D):**
-   - Thả file SVG họa tiết lọt vào bên trong phần màng bọc UV vừa được trải ra ở màn hình 2D. (Khu vực nét đứt).
-3. **Tham số hóa Khối:**
-   - Chọn bông hoa. Mở bảng bên phải (N-Panel), nhập số liệu: `Cao = 10mm`, `Vát = 45 độ`, `Dạng = Vòm`.
-   - Phù điêu bông hoa nổi lên trên Tượng ở màn hình bên cạnh ngay lập tức.
-4. **Hiệu chỉnh Tương tác (Gizmo Control):**
-   - *Dời vị trí:* Nắm vòng tròn điều khiển (Gizmo) trên lưng tượng kéo xuống bụng. Hoa văn trượt mượt mà bám theo độ cong của bụng.
-   - *Chống méo Caro:* Hoa văn vắt qua vai bị méo? Nắm Tay cầm phụ ở vai, vặn lệnh `Relax`. Caro co lại vuông vức, nét sắc lại.
-   - *Chỉnh sửa theo ý khách:* Khách chê hoa nổi quá, gõ số từ 10mm xuống 5mm. Khối lập tức xẹp xuống.
-5. **Xuất xưởng:**
-   - Nhấn `[Bake & Export STL]`.
-   - Hệ thống tự Apply Modifier, dọn rác, xuất ra file Mesh kín (Watertight) đưa vào máy lập trình dao CNC.
+1. **Khởi tạo Studio & Chuẩn bị Phôi:**
+   - Bấm `[Khởi tạo Studio 2.5D]`. Màn hình chia bố cục 3 cột: Leftbar (Layers), Centerbar (2D CAD Canvas) và Rightbar (Inspector).
+   - Bên cạnh mở song song cửa sổ 3D Viewport hiển thị Phôi với lưới Caro đồng đều.
+2. **Thao tác Vẽ & Phân tầng Vector (Leftbar & Centerbar):**
+   - Tạo các Layer: Nét vẽ, Vùng kín, Màu sắc.
+   - Dùng các công cụ CAD (Line, Arc 3-pt, Spline, Trim, Fillet) với chế độ bắt điểm thông minh để hoàn thiện hoa văn.
+   - Các vùng kín tự động được nhận diện và liên kết với Layer Vùng.
+3. **Nắn chỉnh Độ dốc & Cao độ Phù điêu (Rightbar & Centerbar):**
+   - Click chọn một Vùng: Kéo thả các Dot trên mạng lưới đường sinh dốc ở Centerbar.
+   - Nhìn sang Rightbar: Tinh chỉnh đường cong Spline 1 (Độ dốc tổng) và Spline 2 (Mặt cắt vuông góc). Khối 3D trên màn hình đối diện phản hồi tức thì.
+4. **Xuất xưởng:**
+   - Nhấn `[Bake & Export STL]`. Hệ thống tự làm kín đáy, kiểm tra Watertight và xuất file chuẩn gia công CNC.
 
 ---
 
-<h2 id="7-lộ-trình-triển-khai">7. LỘ TRÌNH TRIỂN KHAI (IMPLEMENTATION ROADMAP)</h2>
+<h2 id="8-lộ-trình-triển-khai">8. LỘ TRÌNH TRIỂN KHAI (IMPLEMENTATION ROADMAP)</h2>
 
-**Phase 1: Lõi Toán học SDF (Geometry Nodes)**
-- [ ] Dựng cụm Node bít mặt Curve kín.
-- [ ] Viết logic `Geometry Proximity` đo khoảng cách `$Dist`.
-- [ ] Lập trình giải phương trình chặn trần (Clamp Height) chống xuyên lưới.
-- [ ] Xây dựng Node Group `Float Curve` điều khiển profile (Flat/Dome/Pyramid).
+**Phase 1: Lõi Toán học SDF & Thuật toán Hình thái 2D (Pure Logic Core)**
+- [ ] Viết bộ giải thuật đồ thị phẳng 2D (Planar Graph / Closed Loop Extraction) trong `src/bscu/core/cad/`.
+- [ ] Lập trình giải thuật Trim, Extend, Fillet, Chamfer thuần Python (`tests/unit/`).
+- [ ] Xây dựng cụm Geometry Nodes đo khoảng cách SDF trên Lưới phẳng chuẩn hóa (Uniform Sampling Grid).
+- [ ] Tích hợp bộ chặn trần chống xuyên khối và điều khiển `Float Curve`.
 
-**Phase 2: Hệ thống Phép chiếu (Projection) & Bơm khối**
+**Phase 2: Hệ thống Studio 2D Canvas (Hybrid Viewport Engine)**
+- [ ] Xây dựng Leftbar: Quản lý danh sách Layer, kéo thả Z-order, phân loại 3 kiểu Layer.
+- [ ] Xây dựng Centerbar: Modal Operator + GPU Shader vẽ đường bắt điểm, hiển thị anchor/tangent dots, và lưới nắn đường sinh dốc.
+- [ ] Xây dựng Rightbar: Bảng thuộc tính ngữ cảnh và widget điều khiển đồ thị độ dốc 2 cấp (Dual-Spline).
+
+**Phase 3: Hệ thống Phép chiếu (Projection) & Bơm khối**
 - [ ] Đọc tín hiệu Z ảo từ Phase 1 sang Không gian 3D.
 - [ ] Sử dụng `Sample UV Surface` đồng bộ tọa độ (X,Y) = (U,V).
 - [ ] Cắm `$Z_Height_Virtual` vào lệnh đẩy Normal (`Set Position`).
-- [ ] Test độ mượt mà khi di chuyển UV.
+- [ ] Đồng bộ hóa tính tương tác thời gian thực giữa 2D Canvas và 3D Model.
 
-**Phase 3: Backend Python Scripting (UI & Data)**
-- [ ] Viết Add-on sinh N-Panel Toolbar.
-- [ ] Khai báo tự động các Custom Properties (Biến Metadata) khi khởi tạo Curve.
-- [ ] Dùng `Drivers` kết nối các thanh trượt UI vào Input của Geometry Nodes.
-
-**Phase 4: Frontend UX, Gizmos & Xuất file**
-- [ ] Lập trình `Empty Objects` làm Gizmo trên bề mặt phôi 3D, liên kết tọa độ vào UV Mapping Node.
-- [ ] Gói API `bpy.ops.uv.minimize_stretch` thành nút bấm 1-Click trên giao diện 3D.
-- [ ] Viết Macro dọn dẹp hệ thống và lệnh `Export STL` chuẩn Watertight.
+**Phase 4: Tự động hóa Dọn rác & Xuất STL Watertight**
+- [ ] Tích hợp macro 1-Click làm mịn lưới UV (`bpy.ops.uv.minimize_stretch`).
+- [ ] Tự động hóa hàn kín thành và đáy tạo khối Watertight không lỗi non-manifold.
+- [ ] Xuất file STL chuẩn và báo cáo dung tích/kích thước phôi.
