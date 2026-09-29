@@ -1,7 +1,7 @@
 # ĐẶC TẢ THIẾT KẾ GIAO DIỆN & TRẢI NGHIỆM NGƯỜI DÙNG (UI/UX SPECIFICATION)
 **Dự án:** Hệ thống Điêu khắc CNC 2.5D Tham số hóa trên Blender (BSCU)  
 **Tài liệu:** UI/UX 4 bước: Phôi & Chia mảng → Caro → Bản trải → Tạo phù điêu
-**Phiên bản:** 1.7.0 | **Trạng thái:** Đã chốt toàn bộ UI/UX 4 bước (seam đưa lên đầu, Caro là tab riêng với cọ chỉ dẫn), máy 5 trục, độ phân giải hai tầng, xuất xưởng, lớp phủ màu, mẫu/instance, nhập SVG/DXF và kiến trúc kỹ thuật (mục 9–12). **UX-0 đã triển khai và kiểm chứng** (xem cột Trạng thái ở mục 8); UX-1 trở đi chưa code. Solver, hiệu năng và độ chính xác xuất vẫn chưa kiểm chứng.
+**Phiên bản:** 1.8.0 | **Trạng thái:** Đã chốt toàn bộ UI/UX 4 bước (seam đưa lên đầu, Caro là tab riêng với cọ chỉ dẫn), máy 5 trục, độ phân giải hai tầng, xuất xưởng, lớp phủ màu, mẫu/instance, nhập SVG/DXF và kiến trúc kỹ thuật (mục 9–12). **UX-0 → UX-3 đã triển khai và kiểm chứng** (xem cột Trạng thái ở mục 8); UX-4 trở đi chưa code. Solver, hiệu năng ở quy mô 200k tam giác và độ chính xác xuất vẫn chưa kiểm chứng.
 
 ---
 
@@ -670,7 +670,7 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 | **UX-0** | Khung Addon & điều hướng 4 Tab | `src/bscu/__init__.py`, `core/workflow.py`, `properties/ui_props.py`, `ui/panel_steps.py`, `ui/panel_stock.py`, `ui/panel_downstream.py`, `ui/context.py` | Đăng ký/hủy đăng ký sạch; `scripts/verify_all.py` PASS | **Xong** — commit `5139bc8`; 17 unit + 8 integration headless PASS |
 | **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py`, `bridge/snapshot.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi | **Xong** — 43 unit + 12 integration headless PASS; đo thật trên GUI: hình cầu 120 mm, $\rho^*$=0.003477 UV/mm (lý thuyết 0.003341), RMS $D$=0.207, 0 mặt lật, 0 suy biến |
 | **UX-2** | Cầu nối, job revision, kho thiết kế | `core/ids.py`, `core/jobs.py`, `bridge/design_store.py`, `bridge/job_runner.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender | **Xong** — 106 unit + 7 suite integration headless PASS. Đo D1: unwrap của Blender chặn main thread 46 ms ở 36 864 tam giác (1.26 µs/tam giác), vượt ngân sách khung hình 16 ms từ ~12 700 tam giác; snapshot 13.1 ms ở 9 216 tam giác |
-| **UX-3** | Phôi, vùng trang trí và overlay Caro | UI, properties, `bridge/checker_overlay.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) | Chưa làm |
+| **UX-3** | Phôi, vùng trang trí và overlay Caro | `bridge/checker_overlay.py`, `bridge/region.py`, `properties/design_props.py`, `src/bscu/__init__.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) | **Xong** — 106 unit + 10 suite integration headless PASS; GUI: overlay OBJECT-linked thêm rồi gỡ đúng 1 slot, vùng WHOLE 512/512 mặt, handler undo/load không tích tụ |
 | **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định | Chưa làm |
 | **UX-5** | Tab 2: Chỉ dẫn cọ Caro + dàn đều | `operators/op_caro_brush.py`, `core/uv_hints.py`, `core/lscm.py` (trọng số) | Mục 3B.7; chỉ dẫn áp lại sau sửa seam; $F$/$Shift+F$/$Shift$; $\ge 30$ fps | Chưa làm |
 | **UX-6** | Tab 1: 4 công cụ Seam | `operators/op_seam_*.py`, `core/uv_islands.py` | Validator đúng 100% trên bộ ca nhân tạo | Chưa làm |
@@ -710,6 +710,13 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 - **Đo D1 trên main thread thật (Blender 5.2.2):** `uv.smart_project` chặn main thread 46 ms ở 36 864 tam giác, tức ~1.26 µs/tam giác. Ngân sách khung hình 16 ms bị vượt từ khoảng **12 700 tam giác**. Kết luận bắt buộc cho UX-7/UX-8: không được coi unwrap của Blender là tác vụ nền; trên bộ ca 200k tam giác bắt buộc chạy solver trên snapshot hoặc tách tiến trình.
 - **Chi phí chụp snapshot đã tối ưu có số liệu:** 13.1 ms ở 9 216 tam giác (1.42 µs/tam giác), ngoại suy 285 ms ở 200k tam giác. Vòng lặp Python theo mặt và dict cạnh là hai nút thắt đã loại bỏ (28 ms → gần 0) bằng argsort trên khóa int64; bản đồ cạnh giờ dựng **lazy** vì phần lớn nơi gọi chỉ cần đếm số mặt mỗi cạnh.
 - **Bộ ca nghiệm thu 200k tam giác của mục 3.7 (10 Hz) hiện chưa đạt với snapshot trên main thread.** Đây là lý do D10 bắt buộc có hai tầng: phần dựng hình thái phải chạy ngoài main thread.
+
+**Quyết định vận hành của UX-3 (đã code và kiểm chứng):**
+
+- **Slot overlay được nhận diện bằng vật liệu, không bằng tên.** `MaterialSlot.name` là read-only trong Blender, nên slot overlay được tìm bằng vật liệu `BSCU_Caro_Overlay` mà BSCU tự gán. Slot luôn là **OBJECT**; D2 cấm ép slot OBJECT của người dùng về DATA.
+- **Overlay từ chối thay đổi khi không có dữ liệu hợp lệ** và trả về `False` chứ không ném lỗi: thiếu `BSCU_UV_Active` hoặc không phải Mesh thì bật/tắt là no-op.
+- **Vùng trang trí lưu chỉ số mặt trên chính object** nên sống trong `.blend`, qua Undo và qua save/load. Chọn mặt rỗng là **lỗi**, không phải cơ hội âm thầm mở rộng ra toàn phôi (mục 2.7).
+- **Handler undo/redo/load phải đăng ký idempotent.** Một module nạp lại là một đối tượng hàm khác, nên phải dọn handler cũ theo `__name__` trước khi thêm; nếu không sẽ tích tụ và mỗi sự kiện gọi nhiều lần. Handler cũng phải nhận `*args` vì Blender truyền số tham số khác nhau cho undo/redo/load.
 
 ---
 

@@ -6,4 +6,17 @@ Only modules that actually register Blender classes belong in MODULES; plain
 read-only helpers are imported directly by their consumers.
 """
 
-from . import snapshot  # noqa: F401  (re-exported for convenience)
+from . import checker_overlay, design_store, job_runner, snapshot  # noqa: F401
+
+__all__ = [
+    "checker_overlay",
+    "design_store",
+    "job_runner",
+    "snapshot",
+]
+
+
+def shutdown():
+    """Restore anything the bridge left on the document."""
+    checker_overlay.clear_all()
+    design_store.forget_all()
