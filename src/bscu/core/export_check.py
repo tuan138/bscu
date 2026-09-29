@@ -44,6 +44,8 @@ class ExportReport:
     watertight: bool = False
     max_error_mm: float = 0.0
     min_wall_mm: float = float("inf")
+    measured: Optional[np.ndarray] = None
+    """What the evaluated surface actually measures, in millimetres."""
 
     @property
     def failures(self) -> List[Check]:
@@ -180,6 +182,7 @@ def build_report(verts_mm, faces, measured_mm, expected_mm,
     dimensions, error = check_dimensions(measured_mm, expected_mm, tolerance_mm)
     report.checks.append(dimensions)
     report.max_error_mm = error
+    report.measured = np.asarray(measured_mm, dtype=np.float64).ravel()
     report.watertight = report.checks[0].ok
 
     if remaining_mm is not None:
