@@ -1,7 +1,7 @@
 # ĐẶC TẢ THIẾT KẾ GIAO DIỆN & TRẢI NGHIỆM NGƯỜI DÙNG (UI/UX SPECIFICATION)
 **Dự án:** Hệ thống Điêu khắc CNC 2.5D Tham số hóa trên Blender (BSCU)  
 **Tài liệu:** UI/UX 4 bước: Phôi & Chia mảng → Caro → Bản trải → Tạo phù điêu
-**Phiên bản:** 1.6.0 | **Trạng thái:** Đã chốt toàn bộ UI/UX 4 bước (seam đưa lên đầu, Caro là tab riêng với cọ chỉ dẫn), máy 5 trục, độ phân giải hai tầng, xuất xưởng, lớp phủ màu, mẫu/instance, nhập SVG/DXF và kiến trúc kỹ thuật (mục 9–12). Chưa triển khai/kiểm chứng runtime, solver hoặc hiệu năng.
+**Phiên bản:** 1.7.0 | **Trạng thái:** Đã chốt toàn bộ UI/UX 4 bước (seam đưa lên đầu, Caro là tab riêng với cọ chỉ dẫn), máy 5 trục, độ phân giải hai tầng, xuất xưởng, lớp phủ màu, mẫu/instance, nhập SVG/DXF và kiến trúc kỹ thuật (mục 9–12). **UX-0 đã triển khai và kiểm chứng** (xem cột Trạng thái ở mục 8); UX-1 trở đi chưa code. Solver, hiệu năng và độ chính xác xuất vẫn chưa kiểm chứng.
 
 ---
 
@@ -665,26 +665,34 @@ Nguyên tắc: **không tồn tại bản sao thứ hai của bất kỳ dòng n
 
 Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas tối thiểu trong 3D Viewport) phải có trước UX-7/UX-8 sử dụng canvas và trước UX-9b/UX-10. UX-5 (cọ Caro) đi sau UX-6/UX-7 vì cọ cần seam và solver có trọng số. Mã UX là định danh hạng mục, không bắt buộc thứ tự số khi có phụ thuộc này.
 
-| Bước | Hạng mục | Module chính | Nghiệm thu trước khi đi tiếp |
-| :--- | :--- | :--- | :--- |
-| **UX-0** | Khung Addon & điều hướng 4 Tab | `src/bscu/__init__.py`, `ui/panel_tabs.py`, `ui/panel_*.py` | Đăng ký/hủy đăng ký sạch; `scripts/verify_all.py` PASS |
-| **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi |
-| **UX-2** | Cầu nối, job revision, kho thiết kế | `bridge/snapshot.py`, `bridge/job_runner.py`, `bridge/design_store.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender |
-| **UX-3** | Phôi, vùng trang trí và overlay Caro | UI, properties, `bridge/checker_overlay.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) |
-| **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định |
-| **UX-5** | Tab 2: Chỉ dẫn cọ Caro + dàn đều | `operators/op_caro_brush.py`, `core/uv_hints.py`, `core/lscm.py` (trọng số) | Mục 3B.7; chỉ dẫn áp lại sau sửa seam; $F$/$Shift+F$/$Shift$; $\ge 30$ fps |
-| **UX-6** | Tab 1: 4 công cụ Seam | `operators/op_seam_*.py`, `core/uv_islands.py` | Validator đúng 100% trên bộ ca nhân tạo |
-| **UX-7** | Tab 1: Two-Tier Preview + xem nhanh Caro | `core/unwrap_solver.py`, `draw/seam_overlay.py` | $10$ Hz khi kéo, không khóa UI, cache đúng island |
-| **UX-8** | Tab 2 duyệt bản trải + Tab 3 bố cục | `core/uv_refine.py`, `bridge/uv_bridge.py` | Mục 3B.6, 4.7; ứng viên lỗi không ghi đè bản hợp lệ, packing không đổi hình chiếu |
-| **UX-9a** | Canvas 2D dùng chung trong 3D Viewport + N-Panel Inspector | `draw/canvas_2d.py`, `draw/batches.py`, `draw/snap.py`, `ui/panel_inspector.py`, `operators/op_canvas_mode.py` | Top Ortho $z=0$, draw handler GPU 2D hoạt động mượt mà; widget `template_curve_mapping` hiển thị trong N-Panel; kho K1 lưu/Undo nguyên vẹn |
-| **UX-9b** | Công cụ CAD và nhận diện vùng | `core/geom2d.py`, `core/cad_ops.py`, `core/planar_graph.py`, `operators/op_draw_*.py`, `operators/op_cad_*.py` | Line/Arc/Bezier/Trim/Fillet/Chamfer/Extend + snap; associativity $\le 50$ ms; mục 5.6 |
-| **UX-10** | Trường cao độ, lưới nắn, Inspector, preview | `core/sdf.py`, `core/profile_curves.py`, `core/warp_grid.py`, `core/height_field.py`, `bridge/preview_image.py`, `nodes/relief_displace.py` | Mục 5.9 (trừ rãnh nghiêng dọc); preview theo D10 |
-| **UX-10b** | Quét dao ảo và nối rãnh | `core/groove_sweep.py` | Mục 5.13 |
-| **UX-11** | Xuất xưởng hai tầng và kiểm tra | `core/export_check.py`, `bridge/export_mesh.py`, `operators/op_export.py`, `ui/panel_export.py` | Mục 9.4 |
-| **UX-12** | Lớp phủ màu và liên kết snap | `core/overlay_links.py`, `bridge/material_builder.py`, `nodes/overlay_material.py` | Mục 10.3 |
-| **UX-13** | Mẫu/instance và nhập SVG/DXF | `core/svg_import.py`, `core/dxf_import.py`, `operators/op_import_vector.py`, `operators/op_template_*.py` | Mục 10.6 |
+| Bước | Hạng mục | Module chính | Nghiệm thu trước khi đi tiếp | Trạng thái |
+| :--- | :--- | :--- | :--- | :--- |
+| **UX-0** | Khung Addon & điều hướng 4 Tab | `src/bscu/__init__.py`, `core/workflow.py`, `properties/ui_props.py`, `ui/panel_steps.py`, `ui/panel_stock.py`, `ui/panel_downstream.py`, `ui/context.py` | Đăng ký/hủy đăng ký sạch; `scripts/verify_all.py` PASS | **Xong** — commit `5139bc8`; 17 unit + 8 integration headless PASS |
+| **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi | Chưa làm |
+| **UX-2** | Cầu nối, job revision, kho thiết kế | `bridge/snapshot.py`, `bridge/job_runner.py`, `bridge/design_store.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender | Chưa làm |
+| **UX-3** | Phôi, vùng trang trí và overlay Caro | UI, properties, `bridge/checker_overlay.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) | Chưa làm |
+| **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định | Chưa làm |
+| **UX-5** | Tab 2: Chỉ dẫn cọ Caro + dàn đều | `operators/op_caro_brush.py`, `core/uv_hints.py`, `core/lscm.py` (trọng số) | Mục 3B.7; chỉ dẫn áp lại sau sửa seam; $F$/$Shift+F$/$Shift$; $\ge 30$ fps | Chưa làm |
+| **UX-6** | Tab 1: 4 công cụ Seam | `operators/op_seam_*.py`, `core/uv_islands.py` | Validator đúng 100% trên bộ ca nhân tạo | Chưa làm |
+| **UX-7** | Tab 1: Two-Tier Preview + xem nhanh Caro | `core/unwrap_solver.py`, `draw/seam_overlay.py` | $10$ Hz khi kéo, không khóa UI, cache đúng island | Chưa làm |
+| **UX-8** | Tab 2 duyệt bản trải + Tab 3 bố cục | `core/uv_refine.py`, `bridge/uv_bridge.py` | Mục 3B.6, 4.7; ứng viên lỗi không ghi đè bản hợp lệ, packing không đổi hình chiếu | Chưa làm |
+| **UX-9a** | Canvas 2D dùng chung trong 3D Viewport + N-Panel Inspector | `draw/canvas_2d.py`, `draw/batches.py`, `draw/snap.py`, `ui/panel_inspector.py`, `operators/op_canvas_mode.py` | Top Ortho $z=0$, draw handler GPU 2D hoạt động mượt mà; widget `template_curve_mapping` hiển thị trong N-Panel; kho K1 lưu/Undo nguyên vẹn | Chưa làm |
+| **UX-9b** | Công cụ CAD và nhận diện vùng | `core/geom2d.py`, `core/cad_ops.py`, `core/planar_graph.py`, `operators/op_draw_*.py`, `operators/op_cad_*.py` | Line/Arc/Bezier/Trim/Fillet/Chamfer/Extend + snap; associativity $\le 50$ ms; mục 5.6 | Chưa làm |
+| **UX-10** | Trường cao độ, lưới nắn, Inspector, preview | `core/sdf.py`, `core/profile_curves.py`, `core/warp_grid.py`, `core/height_field.py`, `bridge/preview_image.py`, `nodes/relief_displace.py` | Mục 5.9 (trừ rãnh nghiêng dọc); preview theo D10 | Chưa làm |
+| **UX-10b** | Quét dao ảo và nối rãnh | `core/groove_sweep.py` | Mục 5.13 | Chưa làm |
+| **UX-11** | Xuất xưởng hai tầng và kiểm tra | `core/export_check.py`, `bridge/export_mesh.py`, `operators/op_export.py`, `ui/panel_export.py` | Mục 9.4 | Chưa làm |
+| **UX-12** | Lớp phủ màu và liên kết snap | `core/overlay_links.py`, `bridge/material_builder.py`, `nodes/overlay_material.py` | Mục 10.3 | Chưa làm |
+| **UX-13** | Mẫu/instance và nhập SVG/DXF | `core/svg_import.py`, `core/dxf_import.py`, `operators/op_import_vector.py`, `operators/op_template_*.py` | Mục 10.6 | Chưa làm |
 
 **Định nghĩa Hoàn thành (Definition of Done) cho mỗi bước:** unit test PASS $\to$ chạy headless trên Blender thật $\to$ đo số liệu thực tế bằng MCP socket $\to$ cập nhật tài liệu quy trình tương ứng theo nguyên tắc Single Source of Truth.
+
+**Quyết định vận hành của UX-0 (đã code, commit `5139bc8`):**
+
+- **Mỗi bước sở hữu đúng một sản phẩm bàn giao đã duyệt**, dùng làm điều kiện mở khoá tab kế tiếp: `STOCK` = có Mesh phôi được chọn; `SEAM` = có `BSCU_UV_Active`; `LAYOUT` = bản trải đã duyệt; `RELIEF` = đã tạo phù điêu. Không có sản phẩm thì bước đó là *Chưa làm*, kể cả khi đang có lỗi cũ — lỗi của bước sau không có nghĩa khi bước trước chưa xong.
+- **Thứ tự ưu tiên trạng thái:** Đang tính → Chưa làm → Cần sửa → Có cảnh báo → Xong. Mỗi trạng thái có icon riêng, không chỉ dựa vào màu.
+- **Trạng thái tab là dữ liệu phiên, không lưu vào `.blend`:** `WindowManager.bscu_ui.active_tab`. Sản phẩm bàn giao thì **dẫn xuất từ scene mỗi lần vẽ** (`ui/context.py` → `core/workflow.py`), không ghi cờ trạng thái; nên không thể lệch với dữ liệu thật.
+- **Quy ước tên lớp:** `BSCU_PT_<tên>` cho panel, `BSCU_OT_<tên>` cho operator, `BSCU_PG_<tên>` cho PropertyGroup. Panel chỉ hiện khi `poll()` khớp `active_tab`.
+- **Cổng cho UI thật:** `tests/run_tests.py` phải chèn `src/` vào `sys.path` trước khi nạp suite, nếu không Blender sẽ không import được `bscu`.
 
 ---
 

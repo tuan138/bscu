@@ -25,7 +25,7 @@ Thư mục `docs/` là nơi lưu trữ toàn bộ thông tin kiến trúc, kỹ 
 | Tên file | Nơi lưu trữ | Tóm tắt nội dung |
 | :--- | :--- | :--- |
 | `brainstorming.md` | `docs/concept/brainstorming.md` | TDD v1.1.0 (lịch sử): bối cảnh, triết lý và thuật toán ban đầu. Mọi điểm mâu thuẫn với `UIUX.md` (kho dữ liệu, D10 hai tầng, giao diện native, thứ tự tab, solver) thì `UIUX.md` thắng. |
-| `UIUX.md` | `docs/concept/UIUX.md` | Spec thực thi v1.6.0: luồng 4 tab Phôi & Chia mảng → Caro (cọ chỉ dẫn chống méo) → Bản trải → Tạo phù điêu; Tab 4 đường/mảng/lưới nắn/folder cộng dồn/quét dao ảo; xuất xưởng CNC 5 trục (mục 9); lớp phủ màu, liên kết snap, mẫu/instance, nhập SVG/DXF (mục 10); kiến trúc K1–K7 (mục 11); giao diện native 3D Viewport + N-Panel, phím, mã thông báo (mục 12); build order UX-0→UX-13. |
+| `UIUX.md` | `docs/concept/UIUX.md` | Spec thực thi v1.7.0: luồng 4 tab Phôi & Chia mảng → Caro (cọ chỉ dẫn chống méo) → Bản trải → Tạo phù điêu; Tab 4 đường/mảng/lưới nắn/folder cộng dồn/quét dao ảo; xuất xưởng CNC 5 trục (mục 9); lớp phủ màu, liên kết snap, mẫu/instance, nhập SVG/DXF (mục 10); kiến trúc K1–K7 (mục 11); giao diện native 3D Viewport + N-Panel, phím, mã thông báo (mục 12); build order UX-0→UX-13 kèm cột trạng thái thực thi (mục 8). |
 | `UIUX-root.md` | `docs/concept/UIUX-root.md` | Ý tưởng UI/UX gốc của người dùng (đầu vào, không phải spec). |
 | `agent_setup.md` | `docs/tooling/agent_setup.md` | Hướng dẫn cấu hình CodeGraph MCP Server và bộ kỹ năng Superpowers cho AI coding agent. |
 | `coding_rules.md` | `docs/standards/coding_rules.md` | Quy chuẩn lập trình bắt buộc: file 300-500 dòng, đơn nhiệm, tách Pure Logic khỏi bpy, test tự động. |
