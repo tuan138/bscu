@@ -6,6 +6,7 @@ Discovers and executes all test suites in tests/integration/.
 import importlib.util
 import os
 import sys
+import traceback
 
 
 def _ensure_src_on_path():
@@ -14,6 +15,17 @@ def _ensure_src_on_path():
     src = os.path.join(root, "src")
     if src not in sys.path:
         sys.path.insert(0, src)
+
+
+def _purge_bscu_modules():
+    """Drop cached bscu modules so each suite imports the source tree.
+
+    A suite that installs the packaged add-on leaves the installed copy in
+    sys.modules; without this the next suite would silently test stale code.
+    """
+    for name in [m for m in sys.modules if m == "bscu" or m.startswith("bscu.")]:
+        del sys.modules[name]
+
 
 
 def run_all_integration_tests():
@@ -45,6 +57,7 @@ def run_all_integration_tests():
         module_name = test_file[:-3]
         print(f"--> Running test suite: {test_file}")
 
+        _purge_bscu_modules()
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
             print(f"Failed to load spec for {test_file}", file=sys.stderr)
@@ -60,9 +73,12 @@ def run_all_integration_tests():
             if hasattr(module, "run_test"):
                 module.run_test()
             print(f"--> PASSED: {test_file}\n")
-        except Exception as e:
-            print(f"--> FAILED: {test_file} with error: {e}\n", file=sys.stderr)
+        except Exception:
+            traceback.print_exc()
+            print(f"--> FAILED: {test_file}\n", file=sys.stderr)
             failed_suites.append(test_file)
+        finally:
+            sys.modules.pop(module_name, None)
 
     print("=" * 60)
     if failed_suites:

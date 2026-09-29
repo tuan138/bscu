@@ -50,7 +50,7 @@ Tài liệu này đặc tả quy trình chẩn đoán lỗi, thu thập dữ li�
 - **Áp dụng cho:** Kiểm tra việc tạo node group trong `src/bscu/nodes/`, liên kết socket, gán Custom Properties và áp dụng Modifier.
 - **Lệnh thực thi:**
   ```bash
-  ./blender/blender.exe -b --python tests/integration/test_runner.py
+   ./blender/blender.exe -b --python tests/run_tests.py
   ```
 - **Kỹ thuật trích xuất dữ liệu:**
   - Dùng `bpy.context.evaluated_depsgraph_get()` để lấy dữ liệu thực tế sau khi tính toán Modifier / Geometry Nodes.
@@ -149,7 +149,7 @@ Hệ thống tích hợp MCP Server cho phép AI Agent và Developer tương tá
      python scripts/verify_all.py
      ```
    - Tự động chạy qua 4 chốt chặn (Gates) trong < 5 giây:
-     1. Gate 1: Tuân thủ quy tắc file $\le 200$ dòng & Ruff linter.
+     1. Gate 1: Tuân thủ giới hạn file 300–500 dòng & Ruff linter.
      2. Gate 2: 100% Unit test toán thuần (`pytest tests/unit/`).
      3. Gate 3: Headless Blender integration test (`tests/run_tests.py`).
      4. Gate 4: Đồng bộ CodeGraph (`codegraph sync`).
@@ -160,6 +160,21 @@ Hệ thống tích hợp MCP Server cho phép AI Agent và Developer tương tá
      ```bash
      python scripts/package_extension.py
      ```
+   - **Bố cục zip bắt buộc:** thư mục gốc `bscu/` chứa `blender_manifest.toml` và `bscu/__init__.py`. Lệnh `blender --command extension build` của Blender 5.2 tạo zip phẳng và chính installer của Blender cũng từ chối với lỗi `__init__.py should be in a directory, not at top-level`. Vì vậy `package_extension.py` tự ghi zip và tự kiểm tra bố cục.
+   - **Kiểm chứng bằng test, không bằng mắt:** `tests/integration/test_extension_install.py` cài zip vào Blender thật rồi bật/tắt add-on. Đây là chỗ duy nhất bắt được hồi quy đóng gói.
+   - Module đã cài nằm ở `scripts/addons/bscu`, tên module là `bscu` (không phải `bl_ext.user_default.bscu`).
+
+7. **`scale_length` Quyết Định Kích Thước Vật Lý — Kiểm Tra Bằng Số Đo:**
+   - Với `scale_length = 0.001` (thiết lập mm chuẩn của Blender), **1 Blender unit = 1 mm**. Tạo hình cầu bán kính `0.06` tạo ra vật thể rộng **0.12 mm**, không phải 120 mm.
+   - Mọi chỉ số mật độ $\rho_f$ (UV/mm) sẽ lệch đúng hệ số 1000 nếu dựng hình sai đơn vị. Khi số đo trên GUI lệch đúng một hệ số tròn, nghi ngờ `scale_length` trước khi nghi ngờ code.
+   - Kiểm tra chéo bắt buộc: đối chiếu kết quả GUI với công thức lý thuyết. Ví dụ hình cầu $r = 60$ mm có $\rho^* \approx \sqrt{A_{uv} / 4\pi r^2}$; kết quả đo được 0.003477 UV/mm so với 0.003341 lý thuyết là khớp trong 4%.
+
+8. **Tách Bề Mặt Đo Đo Khỏi Bề Mặt Gốc Khi Có Seam:**
+   - Blender lưu UV **theo loop**, không theo đỉnh. Một đỉnh của cube thuộc 3 mặt, mỗi mặt cho một UV khác nhau. Đọc "một UV mỗi đỉnh" sẽ trộn 3 chart và báo nhầm mặt bị lật.
+   - `bridge/snapshot.py` tách đỉnh theo cặp `(vertex, uv)` trước khi đo, và trả về cả `source_faces` (mesh gốc) cho kiểm tra topology. Bề mặt đã tách **luôn hở** ở mọi nơi bị cắt, nên kiểm tra "mesh có mappable được không" phải dùng `source_*`, không dùng bề mặt đã tách.
+
+9. **Cô lập Suite Kiểm Thử Khi Cài Add-on Thật:**
+   - Suite cài extension giữ lại bản đã cài trong `sys.modules`, khiến suite sau âm thầm chạy code cũ. `tests/run_tests.py` phải xoá cache module `bscu*` trước mỗi suite.
 
 ---
 

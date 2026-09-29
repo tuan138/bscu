@@ -668,7 +668,7 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 | Bước | Hạng mục | Module chính | Nghiệm thu trước khi đi tiếp | Trạng thái |
 | :--- | :--- | :--- | :--- | :--- |
 | **UX-0** | Khung Addon & điều hướng 4 Tab | `src/bscu/__init__.py`, `core/workflow.py`, `properties/ui_props.py`, `ui/panel_steps.py`, `ui/panel_stock.py`, `ui/panel_downstream.py`, `ui/context.py` | Đăng ký/hủy đăng ký sạch; `scripts/verify_all.py` PASS | **Xong** — commit `5139bc8`; 17 unit + 8 integration headless PASS |
-| **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi | Chưa làm |
+| **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py`, `bridge/snapshot.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi | **Xong** — 43 unit + 12 integration headless PASS; đo thật trên GUI: hình cầu 120 mm, $\rho^*$=0.003477 UV/mm (lý thuyết 0.003341), RMS $D$=0.207, 0 mặt lật, 0 suy biến |
 | **UX-2** | Cầu nối, job revision, kho thiết kế | `bridge/snapshot.py`, `bridge/job_runner.py`, `bridge/design_store.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender | Chưa làm |
 | **UX-3** | Phôi, vùng trang trí và overlay Caro | UI, properties, `bridge/checker_overlay.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) | Chưa làm |
 | **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định | Chưa làm |
@@ -693,6 +693,14 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 - **Trạng thái tab là dữ liệu phiên, không lưu vào `.blend`:** `WindowManager.bscu_ui.active_tab`. Sản phẩm bàn giao thì **dẫn xuất từ scene mỗi lần vẽ** (`ui/context.py` → `core/workflow.py`), không ghi cờ trạng thái; nên không thể lệch với dữ liệu thật.
 - **Quy ước tên lớp:** `BSCU_PT_<tên>` cho panel, `BSCU_OT_<tên>` cho operator, `BSCU_PG_<tên>` cho PropertyGroup. Panel chỉ hiện khi `poll()` khớp `active_tab`.
 - **Cổng cho UI thật:** `tests/run_tests.py` phải chèn `src/` vào `sys.path` trước khi nạp suite, nếu không Blender sẽ không import được `bscu`.
+
+**Quyết định vận hành của UX-1 (đã code và kiểm chứng):**
+
+- **Đo trên bề mặt đã tách UV, không phải bề mặt gốc.** Blender lưu UV theo loop; một đỉnh thuộc nhiều mặt sẽ mang nhiều UV khác nhau. `bridge/snapshot.py` tách đỉnh theo cặp `(đỉnh, UV)` trước khi đo. Nếu không tách, các chart bị trộn và mặt hợp lệ bị báo nhầm là lật.
+- **Kiểm tra topology dùng mesh gốc (`source_faces`/`source_edge_faces`), không dùng bề mặt đã tách.** Bề mặt đã tách luôn hở ở mọi nơi bị cắt, nên "có biên" ở đó là chuyện bình thường, không phải lỗi ánh xạ.
+- **`smart_project` không đánh dấu `use_seam`.** Tập seam đã duyệt vẫn là quyết định của người dùng; phần cắt do UV sinh ra không được ghi ngược thành seam.
+- **Ngưỡng so sánh phải tránh sai số float32.** Blender lưu UV ở float32, nên bản trải hoàn hảo cho $\text{RMS} \approx 10^{-7}$, không phải đúng 0. Dùng dung sai $10^{-5}$.
+- **`scale_length` quyết định kích thước vật lý.** Với `scale_length = 0.001`, 1 Blender unit = 1 mm. Số đo lệch đúng hệ số tròn (1000) thì kiểm tra đơn vị trước khi kiểm tra code. Chi tiết tại `docs/debugging/blender_debug_workflow.md` mục 3.7.
 
 ---
 
@@ -805,7 +813,7 @@ Nền tảng: **Blender 4.5 LTS trở lên** (Extensions, `blender_manifest.toml
 
 | Gói | Module |
 | :--- | :--- |
-| `core/` | `ids`, `geom2d`, `planar_graph`, `cad_ops`, `sdf`, `groove_sweep`, `profile_curves`, `warp_grid`, `height_field`, `overlay_links`, `uv_metrics`, `uv_islands`, `uv_hints`, `seam_graph`, `lscm`, `arap`, `sparse_cg`, `svg_import`, `dxf_import`, `export_check` |
+| `core/` | `workflow`, `draw_steps`, `draw_stock`, `draw_downstream`, `ids`, `geom2d`, `planar_graph`, `cad_ops`, `sdf`, `groove_sweep`, `profile_curves`, `warp_grid`, `height_field`, `overlay_links`, `uv_metrics`, `uv_islands`, `uv_hints`, `seam_graph`, `lscm`, `arap`, `sparse_cg`, `svg_import`, `dxf_import`, `export_check` |
 | `bridge/` | `snapshot`, `job_runner`, `design_store`, `uv_bridge`, `checker_overlay`, `preview_image`, `material_builder`, `export_mesh` |
 | `nodes/` | `relief_displace`, `overlay_material` |
 | `draw/` | `canvas_2d`, `batches`, `snap` |

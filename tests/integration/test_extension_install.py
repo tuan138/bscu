@@ -70,6 +70,7 @@ def test_installed_core_stays_free_of_bpy():
     print("[OK] core.workflow ships without a bpy import")
 
 
+
 def test_disable_unregisters_every_panel():
     """Disabling must leave no BSCU panel behind; addon_remove needs a UI area."""
     bpy.ops.preferences.addon_disable(module=BSCU_MODULE)
@@ -87,4 +88,6 @@ def run_test():
     test_installed_copy_registers_all_panels()
     test_installed_core_stays_free_of_bpy()
     test_disable_unregisters_every_panel()
+    # Leave the session as we found it so the next suite starts clean.
+    bpy.ops.preferences.addon_disable(module=BSCU_MODULE)
     print("\nExtension packaging verified end to end!")
