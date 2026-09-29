@@ -4,7 +4,10 @@ Pure Python module (NO bpy dependencies).
 """
 
 import math
+from dataclasses import dataclass
 from typing import Tuple
+
+import numpy as np
 
 
 def mm_to_meters(val_mm: float) -> float:
@@ -41,3 +44,53 @@ def compute_stock_bounding_box(
     min_pt = (-half_x, -half_y, 0.0)
     max_pt = (half_x, half_y, thickness_mm)
     return min_pt, max_pt
+
+
+@dataclass(frozen=True)
+class Similarity:
+    """A 2D similarity: one uniform scale, one rotation, one translation."""
+
+    scale: float
+    angle: float
+    offset: np.ndarray
+
+    def apply(self, points: np.ndarray) -> np.ndarray:
+        """Move points through the transform."""
+        data = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        cos, sin = math.cos(self.angle), math.sin(self.angle)
+        rotation = np.array([[cos, -sin], [sin, cos]], dtype=np.float64)
+        return data @ (rotation * self.scale).T + self.offset
+
+
+def similarity_fit(source: np.ndarray, target: np.ndarray) -> Similarity:
+    """The scale, rotation and translation that best map source onto target.
+
+    An unwrap that matches its target up to a rigid motion is a correct unwrap,
+    and this fit is how a test says so without pinning down the motion itself.
+    """
+    src = np.asarray(source, dtype=np.float64).reshape(-1, 2)
+    dst = np.asarray(target, dtype=np.float64).reshape(-1, 2)
+    if src.shape != dst.shape:
+        raise ValueError(f"need matching point sets, got {src.shape} and {dst.shape}")
+    if src.shape[0] == 0:
+        raise ValueError("cannot fit a transform through no points")
+
+    centred_src = src - src.mean(axis=0)
+    centred_dst = dst - dst.mean(axis=0)
+    denominator = float((centred_src * centred_src).sum())
+    if denominator == 0.0:
+        raise ValueError("cannot fit a transform through coincident points")
+
+    # Complex form: the best multiplier is sum(conj(a) * b) / sum(|a|^2).
+    real = float((centred_src * centred_dst).sum())
+    imag = float(
+        (centred_src[:, 0] * centred_dst[:, 1]).sum()
+        - (centred_src[:, 1] * centred_dst[:, 0]).sum()
+    )
+    scale = math.hypot(real, imag) / denominator
+    angle = math.atan2(imag, real)
+    rotation = np.array(
+        [[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]],
+        dtype=np.float64,
+    ) * scale
+    return Similarity(scale, angle, dst.mean(axis=0) - src.mean(axis=0) @ rotation)

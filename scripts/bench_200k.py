@@ -19,9 +19,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 for _name in [m for m in sys.modules if m == "bscu" or m.startswith("bscu.")]:
     del sys.modules[_name]
 
-from bscu.bridge.snapshot import take_snapshot
-from bscu.core.uv_islands import check_topology
-from bscu.core.uv_metrics import compute_face_metrics, summarise, with_scores
+from bscu.bridge.snapshot import take_snapshot  # noqa: E402  (must follow the purge)
+from bscu.core.uv_islands import check_topology  # noqa: E402
+from bscu.core.uv_metrics import (  # noqa: E402
+    compute_face_metrics,
+    summarise,
+    with_scores,
+)
 
 BSCU_UV = "BSCU_UV_Active"
 GRID = int(os.environ.get("BSCU_BENCH_GRID", "320"))

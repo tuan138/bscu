@@ -45,6 +45,33 @@ class CSRMatrix:
         )
 
     @classmethod
+    def from_coo(cls, rows, cols, values, shape) -> "CSRMatrix":
+        """Build from coordinate triples, summing entries at the same position.
+
+        Summing by row would be wrong: one row of a normal-equation matrix holds
+        several columns, and folding them together destroys the matrix.
+        """
+        rows = np.asarray(rows, dtype=np.int64).ravel()
+        cols = np.asarray(cols, dtype=np.int64).ravel()
+        values = np.asarray(values, dtype=np.float64).ravel()
+        if not rows.size:
+            return cls.empty(shape[1] if len(shape) > 1 else 0)
+
+        key = rows * max(int(cols.max(initial=0)) + 1, 1) + cols
+        order = np.argsort(key, kind="stable")
+        key, cols, values = key[order], cols[order], values[order]
+        rows = rows[order]
+
+        boundary = np.r_[True, key[1:] != key[:-1]]
+        starts = np.flatnonzero(boundary)
+        summed = np.add.reduceat(values, starts) if starts.size else values
+        rows, cols = rows[starts], cols[starts]
+
+        indptr = np.zeros(shape[0] + 1, dtype=np.int64)
+        np.cumsum(np.bincount(rows, minlength=shape[0]), out=indptr[1:])
+        return cls(summed, cols.astype(np.int64), indptr, shape)
+
+    @classmethod
     def empty(cls, columns: int = 0) -> "CSRMatrix":
         return cls(
             data=np.zeros(0),
@@ -201,14 +228,18 @@ def solve_spd(
     rhs: np.ndarray,
     iterations: int = 500,
     tolerance: float = 1e-10,
-    ridge: float = 1e-4,
+    ridge: float = 1e-10,
     growth_limit: float = 1e3,
 ) -> tuple:
     """Solve a symmetric semi-definite system, regularising until it converges.
 
+    The ridge starts far below the matrix scale: a Tikhonov term comparable to
+    the smallest eigenvalue stops being a regulariser and becomes part of the
+    answer, which is how a regularised solve ends up quietly wrong.
+
     A rank-deficient matrix has arbitrarily large solutions along its near-null
     direction, and a small residual says nothing about those. Escalating the
-    ridge fixes most cases; anything that still needs a solution orders of
+    ridge fixes some of those; anything that still needs a solution orders of
     magnitude larger than the right-hand side is reported as *not* converged, so
     the caller keeps the previous chart rather than applying a meaningless one.
     """
