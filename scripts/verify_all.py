@@ -8,10 +8,9 @@ Executes 4 verification gates sequentially:
 """
 
 import os
-import sys
 import subprocess
+import sys
 import time
-
 
 MAX_LINE_LIMIT = 500
 

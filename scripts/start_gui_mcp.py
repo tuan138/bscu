@@ -3,8 +3,9 @@ Startup script for Blender GUI mode.
 Enables blender_mcp_addon and starts the socket server so AI Agent can control the live GUI.
 """
 
-import bpy
 import addon_utils
+import bpy
+
 
 def setup():
     print("[Blender GUI] Enabling blender_mcp_addon...", flush=True)

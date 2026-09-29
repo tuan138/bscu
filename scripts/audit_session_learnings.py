@@ -5,9 +5,8 @@ and verifies the Single Source of Truth invariant (no stray lesson/notes files).
 """
 
 import os
-import sys
 import subprocess
-
+import sys
 
 DOCS_DIR = os.path.abspath("docs")
 FORBIDDEN_PREFIXES = ["lesson", "notes", "tip", "temp", "scratch"]

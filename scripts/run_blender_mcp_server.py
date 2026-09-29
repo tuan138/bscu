@@ -3,11 +3,13 @@ Headless runner script for Blender MCP Server.
 Starts blender_mcp_addon socket server and services requests in a non-blocking loop.
 """
 
+import signal
 import sys
 import time
-import signal
-import bpy
+
 import addon_utils
+import bpy
+
 
 def main():
     print("[MCP Runner] Enabling blender_mcp_addon...", flush=True)
