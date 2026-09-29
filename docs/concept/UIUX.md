@@ -413,13 +413,14 @@ Luồng chính: **Vẽ nét → tạo rãnh/gờ trực tiếp hoặc dùng làm
 - **Xuất:** chia lưới thích nghi vùng trang trí, gọi `evaluate` trực tiếp tại từng đỉnh (không qua ảnh), chia tiếp tới khi sai số dây cung < dung sai (mặc định 0.05 mm) hoặc chạm giới hạn tam giác; chạm giới hạn thì báo `X704`, không âm thầm hạ chính xác.
 - Lý do: độ nét chi tiết tách khỏi mật độ lưới phôi; preview nhanh, xuất chính xác. Nghiệm thu tầng xuất bằng lấy mẫu ngẫu nhiên so mặt xuất với `evaluate` (sai số max/RMS).
 
-**D11 — Biểu đồ nằm trong cột chức năng bên phải Studio.**
-- Thay thế thiết kế HUD biểu đồ nổi trong canvas. Cột chức năng và canvas cùng sửa dữ liệu nguồn.
-- Biểu đồ là vùng vẽ GPU nhận chuột riêng, xuất hiện theo lựa chọn (U2, mục 12). Không giả định panel chuẩn có widget biểu đồ tùy biến; gate U2 phải PASS trước UX-9b.
+**D11 — Inspector và biểu đồ nằm trong N-Panel (Sidebar) chuẩn của Blender.**
+- Thay thế thiết kế hack Image Editor hoặc HUD nổi. Inspector nằm trong N-Panel của 3D Viewport.
+- Tận dụng widget đồ thị chuẩn của Blender: `template_curve_mapping` (Float Curve đa điểm) và `template_curveprofile` (biên dạng vát Bevel Profile). 100% native, tự động hỗ trợ Undo/Redo và lưu file, không cần tự viết engine vẽ đồ thị GPU.
 
-**D12 — Studio 3 cột có quản lý, nhúng được vào layout Blender.**
-- Workspace `BSCU Studio` là preset 3 cột tạo một lần; các lần sau chỉ chuyển sang, không tái chia area. Bố trí và cách nhúng tại U2, mục 12.
-- Không giả lập hai sidebar bằng category N-panel; người dùng chỉnh bố cục thì giữ nguyên.
+**D12 — Giao diện Native trong 3D Viewport, không can thiệp chia layout tự động.**
+- Làm việc trực tiếp trong 3D Viewport chuẩn; không tự động chia 3 cột bằng code và không quản lý vai trò Area (do `bpy.types.Area` không hỗ trợ custom properties).
+- Khi vào Tab 4 (Vẽ phù điêu): Viewport chuyển sang góc nhìn Top Orthographic ($z=0$), modal operator kích hoạt shader 2D CAD và bộ bắt điểm snap.
+- Người dùng có thể tự chia đôi Viewport (bằng thao tác chuột kéo góc chuẩn của Blender hoặc nút tiện ích) để vừa vẽ 2D vừa xem 3D xoay tự do.
 
 ### 5.11. Folder lồng nhau và cao độ cộng dồn
 
@@ -617,7 +618,7 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 | **UX-6** | Tab 2: 4 công cụ Seam | `operators/op_seam_*.py`, `core/uv_islands.py` | Validator đúng 100% trên bộ ca nhân tạo |
 | **UX-7** | Tab 2: Two-Tier Preview | `core/unwrap_solver.py`, `draw/seam_overlay.py` | $10$ Hz khi kéo, không khóa UI, cache đúng island |
 | **UX-8** | Bản trải, refine và packing | `core/uv_refine.py`, `bridge/uv_bridge.py` | Mục 4.7; ứng viên lỗi không ghi đè bản hợp lệ, packing không đổi hình chiếu |
-| **UX-9a** | Canvas 2D dùng chung + prototype Studio 3 cột | `draw/canvas_2d.py`, `draw/batches.py`, `draw/snap.py`, `draw/graph_widget.py`, `operators/op_open_studio.py`, `operators/op_set_area_role.py` | Gate U2 trên Blender 4.5 thật: draw handler/input routing theo vai trò area, nhúng vào layout sẵn có, lưu/mở giữ vai trò; kho K1 lưu/Undo nguyên vẹn |
+| **UX-9a** | Canvas 2D dùng chung trong 3D Viewport + N-Panel Inspector | `draw/canvas_2d.py`, `draw/batches.py`, `draw/snap.py`, `ui/panel_inspector.py`, `operators/op_canvas_mode.py` | Top Ortho $z=0$, draw handler GPU 2D hoạt động mượt mà; widget `template_curve_mapping` hiển thị trong N-Panel; kho K1 lưu/Undo nguyên vẹn |
 | **UX-9b** | Công cụ CAD và nhận diện vùng | `core/geom2d.py`, `core/cad_ops.py`, `core/planar_graph.py`, `operators/op_draw_*.py`, `operators/op_cad_*.py` | Line/Arc/Bezier/Trim/Fillet/Chamfer/Extend + snap; associativity $\le 50$ ms; mục 5.6 |
 | **UX-10** | Trường cao độ, lưới nắn, Inspector, preview | `core/sdf.py`, `core/profile_curves.py`, `core/warp_grid.py`, `core/height_field.py`, `bridge/preview_image.py`, `nodes/relief_displace.py` | Mục 5.9 (trừ rãnh nghiêng dọc); preview theo D10 |
 | **UX-10b** | Quét dao ảo và nối rãnh | `core/groove_sweep.py` | Mục 5.13 |
@@ -753,21 +754,24 @@ Nền tảng: **Blender 4.5 LTS trở lên** (Extensions, `blender_manifest.toml
 
 **U1 — Điểm vào và thanh bước.** N-panel **BSCU** trong 3D Viewport thường; trên cùng là thanh 4 bước, mỗi bước mang trạng thái *Chưa làm / Đang tính / Có cảnh báo / Cần sửa / Xong*; bấm để chuyển panel. Tab 1 làm việc trực tiếp trên 3D; Tab 2–4 có **Mở Studio**.
 
-**U2 — Studio 3 cột.**
+**U2 — Bố cục Native trong 3D Viewport.**
 
 ```
-+------------------------------+------------------------------+-------------+
-| Canvas 2D (VIEW_3D ortho)    | Xem trước 3D (VIEW_3D)       | Cột chức    |
-| Toolbar trái: công cụ BSCU   |                              | năng (hẹp)  |
-| lớn, kéo đổi kích thước      | lớn, kéo đổi kích thước      | ẩn/hiện     |
-|                              |                              | theo công cụ|
-+------------------------------+------------------------------+-------------+
++-------------------------------------------------------------+-----------------------+
+| 3D Viewport (Top Ortho z=0 khi vẽ Canvas 2D / hoặc 3D xoay)  | N-Panel (Sidebar bên  |
+| - Toolbar trái (phím T): Công cụ CAD (Line, Arc, Spline...) | phải, phím N):        |
+| - Viewport giữa: GPU Shader vẽ nét CAD 2D, bắt điểm Smart   | - Tab BSCU            |
+| - Hỗ trợ kéo chia đôi màn hình chuẩn của Blender (2D + 3D)  | - Cây Lớp / Lớp phủ   |
+|                                                             | - Thuộc tính đối tượng|
+|                                                             | - Biểu đồ Float Curve |
+|                                                             |   (native widget)     |
++-------------------------------------------------------------+-----------------------+
 ```
 
-- **Canvas 2D** và **Xem trước 3D** là hai cột lớn, là area chuẩn của Blender nên kéo đổi kích thước, gộp/tách, phóng toàn màn hình (Ctrl+Space) như mọi layout Blender.
-- **Cột chức năng** hẹp bên phải: nội dung ẩn/hiện theo công cụ và đối tượng đang chọn — cây Lớp/Lớp phủ, thuộc tính, ô số, và biểu đồ (dọc đường, tiết diện, nút giao) chỉ khi liên quan. Cột là một area riêng (Image Editor không gắn ảnh: vùng WINDOW vẽ biểu đồ GPU + nhận chuột, sidebar chứa thuộc tính); người dùng có thể thu gọn.
-- **Hai cách dùng:** (a) Workspace preset `BSCU Studio` tạo một lần, lần sau chỉ chuyển sang; (b) **nhúng vào layout sẵn có**: mọi area 3D Viewport/Image Editor đều có lệnh **Đặt làm Canvas BSCU / Xem trước BSCU / Cột chức năng BSCU** (menu header), không bắt buộc workspace riêng. Vai trò area lưu theo screen; BSCU không tự tái chia area.
-- Gate prototype (UX-9a) trên Blender 4.5: draw handler và input routing đúng area vai trò, lưu/mở giữ vai trò area, nhiều canvas cùng lúc không xung đột. Thất bại thì xét lại D11–D12 trước khi làm tiếp.
+- **Canvas 2D:** Sử dụng chính 3D Viewport nhìn thẳng từ trên xuống ($z=0$). Modal operator vẽ các nét 2D, tay nắm Bezier, điểm neo và chỉ báo snap bằng GPU shader (`UNIFORM_COLOR`, `POLYLINE_UNIFORM_COLOR`).
+- **Xem trước 3D:** Có thể xem trực tiếp bằng cách xoay góc nhìn, hoặc người dùng kéo chia đôi 3D Viewport (1 bên khóa Top Ortho 2D, 1 bên xoay 3D) — hoàn toàn theo cơ chế layout tự nhiên của Blender, không can thiệp code chia layout phức tạp.
+- **Inspector:** Đặt trong N-Panel (Sidebar bên phải), nội dung co giãn và hiển thị theo ngữ cảnh đối tượng chọn (Đường, Mảng, Lưới nắn, Lớp phủ). Tận dụng `template_curve_mapping` và `template_curveprofile` có sẵn của Blender.
+- Bỏ hoàn toàn cơ chế hack Image Editor và cơ chế lưu vai trò Area (đã kiểm chứng `Area` không hỗ trợ custom property).
 
 **U3 — Phím tắt (chỉ khi con trỏ trên canvas).**
 
