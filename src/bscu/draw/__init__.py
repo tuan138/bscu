@@ -2,7 +2,7 @@
 Viewport drawing for BSCU. Handlers attach on register and come off on unregister.
 """
 
-from . import seam_overlay
+from . import batches, canvas_2d, seam_overlay, snap  # noqa: F401
 
 
 def register():

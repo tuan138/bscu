@@ -24,6 +24,8 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
+from .batches import MIN_WIDTH_PX, Batch
+
 MM_PER_METRE = 1000.0
 
 #: The four palettes the spec asks for, as RGBA in 0..1.
@@ -33,24 +35,6 @@ PALETTES: Dict[str, Tuple[Tuple[float, float, float, float], ...]] = {
     "density": ((0.95, 0.70, 0.13, 1.0), (0.55, 0.20, 0.62, 1.0)),
     "height": ((0.10, 0.55, 0.80, 1.0), (0.85, 0.25, 0.45, 1.0)),
 }
-
-#: A seam thinner than this in screen pixels is not worth drawing.
-MIN_WIDTH_PX = 2.0
-
-
-@dataclass
-class Batch:
-    """A run of line segments sharing one colour and width."""
-
-    points: np.ndarray
-    colour: Tuple[float, float, float, float]
-    width_px: float
-    label: str = ""
-
-    def __len__(self) -> int:
-        """How many edges this batch holds; a line batch is two points per edge."""
-        return int(self.points.shape[0] // 2)
-
 
 @dataclass
 class OverlayState:
