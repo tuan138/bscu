@@ -36,3 +36,21 @@
 4. **Kiểm thử tự động (Smoke & Unit Tests):** Mọi thay đổi phải có test kiểm chứng (chạy Unit Test hoặc Headless `./blender/blender.exe -b --python tests/run_tests.py`).
 5. **Đăng ký module sạch:** Không khai báo class thủ công hàng loạt trong `__init__.py`; sử dụng danh mục đăng ký theo từng module con.
 6. **Đồng bộ CodeGraph:** Chạy `codegraph sync` sau khi cập nhật mã nguồn để giữ vững đồ thị quan hệ codebase.
+
+---
+
+## 6. Superpowers Skills (BẮT BUỘC)
+> **BẮT BUỘC:** Agent **PHẢI sử dụng superpower skill** (`skill://<name>`) trong toàn bộ quá trình phát triển.
+1. **Đọc skill trước khi hành động:** Khi task khớp với một skill, agent **MUST** đọc `skill://<tên-skill>` trước khi thực hiện bất kỳ thao tác code nào.
+2. **Các skill tối thiểu áp dụng theo giai đoạn:**
+   - `using-superpowers` — mở đầu mọi phiên làm việc, trước mọi phản hồi khác.
+   - `brainstorming` — trước khi bắt đầu công việc sáng tạo (tính năng, component, chức năng mới).
+   - `writing-plans` — khi có đặc tả/spec cho tác vụ nhiều bước, trước khi chạm vào code.
+   - `test-driven-development` — trước khi viết implementation, không phải sau.
+   - `systematic-debugging` — khi gặp bug, test fail hoặc hành vi lạ, trước khi đề xuất fix.
+   - `verification-before-completion` — trước khi tuyên bố hoàn thành, commit hoặc tạo PR.
+   - `requesting-code-review` / `receiving-code-review` — khi hoàn tất task lớn hoặc khi nhận review.
+   - `using-git-worktrees` — khi cần workspace cách ly cho feature work.
+   - `dispatching-parallel-agents` / `subagent-driven-development` — khi có 2+ task độc lập.
+3. **Các skill khác** (`writing-skills`, `finishing-a-development-branch`, `diagnosing-superpowers`) áp dụng theo ngữ cảnh tương ứng.
+4. **Ưu tiên:** Skill đọc được **luôn thắng** hướng dẫn mặc định khi có xung đột.

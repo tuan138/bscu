@@ -57,7 +57,7 @@ Kiến trúc luồng dữ liệu (Data Pipeline) chảy một chiều qua 3 tầ
 - **Tích hợp Tham số:** Các đường Vector 2D mỏng dính nhưng mang "siêu dữ liệu" (Metadata) do User nhập từ UI Panel.
 
 ### TẦNG 2: Động cơ Hình học Ảo (Procedural Geometry Engine)
-*Trái tim Toán học (Geometry Nodes) dịch siêu dữ liệu thành độ cao.*
+*Trái tim Toán học dịch siêu dữ liệu thành độ cao. **Phép tính do `core/` (numpy) thực hiện, Geometry Nodes chỉ bơm kết quả** — xem quyết định D10 ở `UIUX.md` mục 5.10.*
 - Thu thập Vector kín từ Tầng 1, biến thành mặt phẳng (N-gons).
 - Chạy thuật toán đo khoảng cách (SDF).
 - Trả về kết quả là một **Bản đồ Độ cao Ảo (Virtual Height Map)** tồn tại dưới dạng Data Float trên RAM (Chưa phải Mesh vật lý).
@@ -94,7 +94,7 @@ Kiến trúc luồng dữ liệu (Data Pipeline) chảy một chiều qua 3 tầ
 - **Type:** Polygon Mesh (Khuyến nghị: Quads)
 - **Modifiers:**
   1. `Subdivision Surface` (Level 3-5, cung cấp lưới đủ dày để đẩy đỉnh)
-  2. `Geometry Nodes` (Nhận tín hiệu từ Tầng 2 để Displace)
+  2. `Geometry Nodes` (Đọc mesh attribute `cnc_height` do Tầng 2 ghi và displace theo Normal)
 - **Data:** `UVMap` chính, Cạnh đánh dấu `Seam`.
 
 ---
@@ -158,7 +158,7 @@ Hệ thống giao diện 2D Canvas được thiết kế chuyên biệt theo mô
 
 ### 6.1. Thuật toán Lõi SDF — Lưới lấy mẫu chuẩn hóa (Uniform Sampling Grid Engine)
 *Khắc phục triệt để hạn chế của nút `Fill Curve` (vốn chỉ nối tam giác ở biên mà không có đỉnh nội suy ở tâm).*
-1. **Sinh lưới chuẩn (Grid Generation):** Tầng 2 tạo lưới phẳng Quad đồng nhất (`Grid` primitive) bao trùm Canvas với độ phân giải bước lưới tham số hóa (ví dụ: `step = 0.2mm - 0.5mm`).
+1. **Sinh lưới chuẩn (Grid Generation):** Tầng 2 dựng lưới phẳng Quad đồng nhất trong `core/height_field.py` (không dùng primitive `Grid` của Geometry Nodes), bao trùm Canvas với độ phân giải bước lưới tham số hóa (ví dụ: `step = 0.2mm - 0.5mm`).
 2. **Mặt nạ trong/ngoài (Raycast In-Out Masking):** 
    - Bít kín các đường Curve của *Layer Vùng* thành mặt phẳng tạm.
    - Dùng tia chiếu `Raycast` từ trên trục $Z$ xuống: Các đỉnh của Grid đâm trúng mặt phẳng $\to$ Gán thuộc tính `$Inside = 1.0$; các đỉnh nằm ngoài gán `$Inside = 0.0$.
@@ -200,8 +200,8 @@ Hệ thống giao diện 2D Canvas được thiết kế chuyên biệt theo mô
 **Phase 1: Lõi Toán học SDF & Thuật toán Hình thái 2D (Pure Logic Core)**
 - [ ] Viết bộ giải thuật đồ thị phẳng 2D (Planar Graph / Closed Loop Extraction) trong `src/bscu/core/cad/`.
 - [ ] Lập trình giải thuật Trim, Extend, Fillet, Chamfer thuần Python (`tests/unit/`).
-- [ ] Xây dựng cụm Geometry Nodes đo khoảng cách SDF trên Lưới phẳng chuẩn hóa (Uniform Sampling Grid).
-- [ ] Tích hợp bộ chặn trần chống xuyên khối và điều khiển `Float Curve`.
+- [ ] Viết `core/height_field.py`: SDF trên lưới lấy mẫu chuẩn hoá + profile nội suy, xuất mesh attribute `cnc_height` (unit test thuần Python).
+- [ ] Tích hợp bộ chặn trần chống xuyên khối và điều khiển đường cong profile.
 
 **Phase 2: Hệ thống Studio 2D Canvas (Hybrid Viewport Engine)**
 - [ ] Xây dựng Leftbar: Quản lý danh sách Layer, kéo thả Z-order, phân loại 3 kiểu Layer.
