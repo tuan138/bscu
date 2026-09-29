@@ -1,29 +1,37 @@
 # ĐẶC TẢ THIẾT KẾ GIAO DIỆN & TRẢI NGHIỆM NGƯỜI DÙNG (UI/UX SPECIFICATION)
 **Dự án:** Hệ thống Điêu khắc CNC 2.5D Tham số hóa trên Blender (BSCU)  
-**Tài liệu:** Concept UI/UX Pipeline 4 Bước (Caro Map $\to$ Seam $\to$ Unwrap $\to$ Height Map)  
-**Phiên bản:** 1.1.0 | **Trạng thái:** Thiết kế Khái niệm & Chuẩn tương tác — đã chốt quyết định vận hành (mục 1.1, 2.8, 3.8, 4.8, 5.10)  
+**Tài liệu:** UI/UX 4 bước: Chuẩn bị phôi → Chia mảng → Bản trải → Tạo phù điêu
+**Phiên bản:** 1.5.0 | **Trạng thái:** Đã chốt toàn bộ UI/UX 4 bước, máy 5 trục, độ phân giải hai tầng, xuất xưởng, lớp phủ màu, mẫu/instance, nhập SVG/DXF và kiến trúc kỹ thuật (mục 9–12). Chưa triển khai/kiểm chứng runtime, solver hoặc hiệu năng.
 
 ---
 
 ## 1. TỔNG QUAN KIẾN TRÚC UI/UX & LUỒNG CÔNG VIỆC TỔNG THỂ
 
-Hệ thống Addon BSCU được thiết kế để giải quyết bài toán cốt lõi: **Điêu khắc phù điêu tham số hóa trên các bề mặt phôi 3D cong lồi lõm phức tạp mà không làm méo tỷ lệ vector 2D**. 
+Hệ thống BSCU hỗ trợ tạo phù điêu tham số trên phôi cong, giữ vector nguồn và kiểm soát sai lệch khi chiếu 3D. Bề mặt cong hai chiều không thể trải phẳng bảo toàn mọi khoảng cách; không cam kết tuyệt đối không méo.
 
 Quy trình trải nghiệm người dùng tuân theo luồng tuyến tính 4 Tab (nhưng hỗ trợ đồng bộ dữ liệu hai chiều - Bi-directional Synchronization):
 
 ```mermaid
 graph LR
-    A["Phôi 3D Mesh"] --> Tab1["Tab 1: Caro Map<br/>Kiểm tra &amp; Cân bằng UV"]
-    Tab1 <-->|Đồng bộ UV| Tab2["Tab 2: Seam<br/>Cắt mảng bề mặt 3D"]
-    Tab2 <-->|Đồng bộ Mảng| Tab3["Tab 3: Unwrap<br/>Trải phẳng 2D không biến dạng"]
-    Tab3 <-->|Đồng bộ Canvas| Tab4["Tab 4: Height Map<br/>3-Pane CAD Studio + Đẩy khối"]
-    Tab4 -->|Displacement Normal| B["Khối phù điêu 3D Real-time"]
+    A["Phôi 3D Mesh"] --> Tab1["1. Chuẩn bị phôi"]
+    Tab1 --> Tab2["2. Chia mảng"]
+    Tab1 -->|Không cần sửa chia| Tab3["3. Bản trải"]
+    Tab2 -->|Duyệt ứng viên| Tab3
+    Tab3 --> Tab4["4. Tạo phù điêu"]
+    Tab4 -->|Preview thay đổi, giữ bản cũ tới khi duyệt| Tab2
+    Tab4 --> B["Phù điêu 3D"]
 ```
 
 ### Nguyên tắc UX Xuyên suốt (Core UX Principles)
-1. **Phản hồi Tức thì (Zero-Latency Feedback):** Mọi thay đổi ở bất kỳ Tab nào (kéo caro, rạch seam, trải lưới, vẽ nét vector, kéo dot dốc) đều phản hồi ngay lập tức trên khung nhìn 3D Viewport mà không cần bấm nút "Apply" hay "Recalculate" thủ công.
-2. **Khả nghịch & Đồng bộ Ngược (Non-Destructive & Bi-directional Sync):** Khi đang ở Tab 4 mà quay lại Tab 2 sửa đường Seam hoặc Tab 1 kéo giãn Caro, toàn bộ cấu trúc mảng 2D và hoa văn Height Map tự động cập nhật lại theo tọa độ UV mới mà không làm mất dữ liệu nét vẽ.
+1. **Phản hồi phân tầng:** thao tác phản hồi ngay; phân biệt preview và kết quả đã kiểm tra, không dùng số liệu cũ như kết quả mới.
+2. **Phi phá hủy:** giữ nét nguồn và cấu hình; đổi UV/seam khi đã có hoa văn phải preview ảnh hưởng trước khi thay bản đang dùng (mục 6).
 3. **Mô hình Trực quan Hóa (Visual Indicators):** Mọi biến dạng (Distortion), lỗi chồng lấn (Overlap), hoặc sai lệch diện tích đều có bản đồ nhiệt màu (Color Heatmap) cảnh báo trực quan cho người dùng.
+
+### Điều hướng dành cho người mới
+
+- Bốn bước hiển thị: **Chuẩn bị phôi → Chia mảng → Bản trải → Tạo phù điêu**. Tên Caro/Seam/Unwrap/Height Map bên dưới chỉ subsystem tương ứng.
+- Luồng có hướng dẫn, được quay lại; thuật toán nằm trong phần nâng cao. Bắt đầu bằng **Dùng làm phôi**, xác nhận kích thước mm, chọn vùng trang trí rồi **Phân tích & chuẩn bị**.
+- **Kiểm tra & Xuất** là hành động cuối (mục 9). Máy đích là CNC 5 trục; BSCU không mô phỏng CAM, không kết luận an toàn gia công chỉ từ UV/manifold.
 
 ### 1.1. Nền tảng Canvas 2D Dùng Chung (Shared 2D Canvas Foundation)
 
@@ -35,7 +43,7 @@ UV trong Blender gắn cứng vào loop của mesh — người dùng **không t
 | Đặc điểm | Chốt |
 | :--- | :--- |
 | Nơi vẽ | 3D Viewport, nhìn thẳng (orthographic) xuống mặt phẳng quy ước $z = 0$; mọi hình học 2D nằm trên mặt phẳng này |
-| Đơn vị | 1 unit Blender = 1 mm thật; scene phải đặt `unit_settings` = Metric, đơn vị mm (BSCU kiểm tra và cảnh báo khi lệch) |
+| Đơn vị | Hiển thị mm, quy đổi theo `scene.unit_settings.scale_length`; không coi chọn Metric/mm là đủ để 1 Blender unit = 1 mm, không tự rescale scene |
 | Hit-test | Ray từ con trỏ xuống mặt phẳng $z=0$ — không phụ thuộc hình học 3D của phôi |
 | Bắt điểm | Một bộ snap dùng chung: Endpoint, Midpoint, On-Curve, Intersection, cùng lưới và trục đã bật |
 | Lớp nội dung | Tab = lớp được bật/tắt: Tab 2 = islands reflow, Tab 3 = bố cục đã trải, Tab 4 = nét vẽ + vùng + lưới dốc |
@@ -47,635 +55,444 @@ UV trong Blender gắn cứng vào loop của mesh — người dùng **không t
 
 ---
 
-## 2. TAB 1: CARO MAP — KIỂM TRA & CÂN BẰNG MẬT ĐỘ UV
+## 2. TAB 1: CHUẨN BỊ PHÔI
 
-### 2.1. Mục đích & Cơ chế Nền tảng
-- **Mục tiêu:** Áp đặt lưới kiểm tra (Caro / Checker Map) lên phôi 3D để phát hiện các vùng co kéo, biến dạng hình học; cung cấp công cụ tự động và thủ công để dàn đều mật độ ô vuông trên toàn bộ bề mặt cong.
-- **Hệ quả kỹ thuật:** Ô caro trên 3D càng đạt chuẩn tỉ lệ $1:1$ (hình vuông hoàn hảo) và kích thước bằng nhau trên mọi vị trí thì hoa văn 2D khi chiếu lên phôi 3D sẽ hoàn toàn không bị méo, không bị kéo dãn sọc hay ép dẹp rãnh điêu khắc.
+### 2.1. Mục tiêu và luồng chính
 
-```
-+-----------------------------------------------------------------------+
-|  [Tab 1: Caro Map]  |  Tab 2: Seam  |  Tab 3: Unwrap  | Tab 4: Height |
-+-----------------------------------------------------------------------+
-| [*] Chế độ Caro Overlay: [BẬT] (Tự động bật khi vào Tab)              |
-|                                                                       |
-| 1a. THIẾT LẬP CARO MAP (HIỆU CHUẨN TƯƠNG ĐỐI - THUẬT TOÁN)             |
-| - Kích thước ô Caro (tương đối): [=====|=====] 10.0 mm/ô (suy ra)     |
-|   * Mốc quy đổi rho* = median(mật độ texel toàn lưới), khử outlier MAD|
-| - Kiểu hiển thị: (o) Caro Đen/Trắng   ( ) Lưới UV đánh số            |
-| - Bản đồ nhiệt Biến dạng (Distortion Heatmap): [BẬT / TẮT]            |
-|   [Xanh lá: Chuẩn 1:1] [Đỏ: Dãn >15%] [Xanh lam: Nén < -15%]          |
-|                                                                       |
-| 1b. AUTO-SEAM ASSIST (TỰ ĐỘNG ĐỀ XUẤT ĐƯỜNG CẮT)                      |
-| - Kiểm tra topology: [!] CHƯA HỢP LỆ (chi != 1, còn 12 đỉnh chóp)     |
-| - [ ~ PHÂN TÍCH & ĐỀ XUẤT ĐƯỜNG CẮT (Auto-Seam) ~ ]                  |
-| - Mức độ cắt (Aggressiveness): [=====|=====] 0.45                    |
-| - Dự báo trước khi áp: 4 mảng | Distortion RMS 2.1% | Overlap 0        |
-|   [ ÁP DỤNG & TRẢI PHẲNG ]      [ Sang Tab 2 tinh chỉnh tay ]         |
-|                                                                       |
-| 2. CÂN BẰNG TỰ ĐỘNG (AUTOMATIC RELAX)                                 |
-| - Thuật toán: [ARAP - As-Rigid-As-Possible   v]                       |
-|   * Conformal (Bảo toàn góc vuông 90 độ)                              |
-|   * ARAP (Cân bằng lực căng, đều diện tích)                           |
-|   * Harmonic / Curvature-Weighted (Ưu tiên vùng cong gắt)             |
-| - Số bước lặp (Iterations): [  100  ]                                 |
-| - Tùy chọn: [*] Viền tự do (Free Boundary)  [ ] Ghim viền             |
-| - Gióng trục lưới (Align to Axis): [ X/Y ]                            |
-| - Chế độ đối xứng (Symmetry): [*] Trục X  [ ] Trục Y                  |
-| - Phạm vi: (o) Toàn phôi (yêu cầu topology hợp lệ)  ( ) Vùng chọn     |
-| - [ >> DÀN ĐỀU (Auto Relax) << ]                                     |
-|                                                                       |
-| 3. HIỆU CHỈNH CỤC BỘ (LOCAL SCULPT & TWEAK)                           |
-| - Bút cọ 3D (Viewport Brushes) - [F: Cỡ cọ, Shift+F: Lực]             |
-|   [ Relax Brush  ] : (Giữ Shift) Quét chuột xoa dịu vùng méo ô caro   |
-|   [ Pinch Brush  ] : Quét chuột để thu nhỏ mật độ ô caro              |
-|   [ Expand Brush ] : Quét chuột để phóng to mật độ ô caro             |
-|   [ Grab Brush   ] : Kéo trượt ô caro sang vị trí khác                |
-|   [ Twist Brush  ] : Xoay chiều lưới caro                             |
-| - Bán kính bút (Radius): [ 25 mm ]  | Lực nhấn (Strength): [ 0.5 ]    |
-| - [ Thư giãn Vùng chọn (Relax Selected Faces) ]                       |
-|                                                                       |
-| 4. ĐỒNG BỘ & TRẠNG THÁI                                               |
-| * Distortion RMS: 1.8% | Overlap: 0 | Islands: 4 (Đạt chuẩn CNC)       |
-| ! CẢNH BÁO: Biến dạng cực đại 22% tại đỉnh vòm -> chạy Auto-Seam      |
-+-----------------------------------------------------------------------+
-```
+Người dùng xác nhận **đúng phôi, đúng kích thước, đúng vùng trang trí** trước khi thiết kế. Không yêu cầu biết UV hoặc chọn thuật toán.
 
-### 2.2. Chi tiết UX & So sánh Phần mềm Chuyên nghiệp
-1. **Tham chiếu từ RizomUV & Substance Painter:**
-   - **Tự động gán Material tạm thời (Temporary Viewport Shading Hook):** Ngay khi người dùng nhấp vào Tab 1, Addon tự động gán một Shader kiểm tra (Custom Node Group phát sinh procedural caro không phụ thuộc độ phân giải ảnh texture). Khi chuyển sang Tab khác hoặc xuất file, Shader này tự động ẩn đi, bảo toàn vật liệu gốc của người dùng.
-   - **Bản đồ nhiệt 3 màu & Gợi ý Cắt Seam thông minh:**
-     - $\text{Màu Xanh Lá } (\Delta \approx 0\%)$: Tỉ lệ ô vuông cân đối hoàn hảo.
-     - $\text{Màu Đỏ } (\Delta > +15\%)$: Ô caro bị kéo giãn (Texture stretch) do bề mặt cong dốc.
-     - $\text{Màu Xanh Lam } (\Delta < -15\%)$: Ô caro bị nén quá nhỏ (Texture pinch).
-     - **Seam Hint:** Nếu hệ thống xoa dịu UV (Relax) không thể hạ độ dãn/nén xuống dưới ngưỡng 15%, chứng tỏ phôi cong quá gắt. Dưới panel lập tức hiện dòng cảnh báo khuyên người dùng sang Tab 2 để cắt Seam, kèm hiển thị nhấp nháy tại khu vực căng quá mức.
- 2. **Tương tác trực tiếp trên 3D Viewport (3D Sculpt Relax) với chuẩn thao tác Blender:**
-   - **Phím tắt quen thuộc:** Bấm `F` rê chuột để chỉnh kích thước cọ, `Shift + F` để chỉnh lực nhấn. Khi đang dùng cọ bất kỳ, giữ `Shift` quét chuột sẽ tự động chuyển sang chế độ Relax (Giống hệt Sculpt Mode).
-   - **Đa dạng cọ (Brush Types):** Ngoài Relax (xoa dịu), Pinch/Expand (thu nhỏ/phóng to), còn bổ sung Grab (Kéo) và Twist (Xoay) để nắn lưới caro uốn lượn theo ý đồ thị giác.
-   - **Đối xứng (Symmetry) & Viền tự do (Free Boundary):** Hỗ trợ cọ quét đối xứng qua trục X/Y để tiết kiệm thời gian. Mặc định thuật toán Relax chạy ở chế độ Viền tự do (không khóa mép phôi) để đảm bảo ô caro bên trong vuống vức tuyệt đối.
-   - **Gióng trục (Align to Axis):** Cho phép nắn nhanh lưới caro thẳng song song với các trục X/Y của không gian 3D, rất quan trọng để khi đưa vào máy CNC, đường nét dọc/ngang không bị xéo (răng cưa).
- 3. **Đồng bộ trạng thái:** Dữ liệu UV được lưu vào UV Map chuyên dụng `BSCU_UV_Active`. Khi quay lại Tab này ở bất kỳ thời điểm nào, việc điều chỉnh UV sẽ đồng bộ ngay lập tức sang các Tab sau.
+**Chọn phôi → Xác nhận kích thước → Chọn vùng trang trí → Phân tích & chuẩn bị → Xem bản đề xuất.**
 
-### 2.3. Hiệu chuẩn Tương đối & Đặc tả Thuật toán (chốt)
+- Chưa có phôi: hiện **Chọn vật thể Mesh → Dùng làm phôi**, không hiện bảng solver trống.
+- Hiển thị kích thước world-space đã quy đổi mm theo scene. Xác nhận là ghi nhận đơn vị/kích thước đang dùng, không tự scale hoặc apply transform.
+- Vùng trang trí: toàn phôi hoặc tập mặt được chọn; có thêm/bớt vùng và highlight. Mặc định chọn mặt nhìn thấy, không xuyên qua mặt sau; chọn xuyên là tùy chọn tường minh.
+- Chỉ phân tích vùng có liên quan và vùng lân cận cần thiết, không ép unwrap đáy/mặt sau không trang trí.
+- Chưa có UV hợp lệ: hiển thị **Chưa có bản trải**, tạo ứng viên trước khi đo distortion. UV sẵn có có thể được kiểm tra/tái sử dụng, không mặc định ghi đè UV của người dùng.
 
-**Nguyên tắc hiệu chuẩn — TƯƠNG ĐỐI, thuần thuật toán (không nhập tay, không chọn mẫu):**
-Không tồn tại mốc vật lý tuyệt đối ở bước này. Mọi chỉ số đều quy chiếu về **chính lưới đang xét**:
+### 2.2. Nội dung giao diện và phản hồi
 
-| Đại lượng | Công thức | Ý nghĩa |
-| :--- | :--- | :--- |
-| Mật độ texel mỗi mặt | $\rho_f = \sqrt{A_{uv,f} / A_{3d,f}}$ | Tỉ lệ UV/mm² bề mặt. Đơn vị: UV/mm |
-| Mốc chuẩn (khử outlier) | $\rho^* = \operatorname{median}_f(\rho_f)$ | Median bền vững hơn mean; chống lệch do vài mặt dị dạng |
-| Biến dạng tỉ lệ | $\delta_f = \rho_f / \rho^* - 1$ | Nguồn của bản đồ nhiệt Đỏ/Lam |
-| Ma trận Jacobian mặt | $J_f = [\vec{u}_1\ \vec{u}_2][\vec{e}_1\ \vec{e}_2]^{-1}$ | Ánh xạ 3D (tangent basis) $\to$ UV |
-| Độ "vuông" (shear) | $s_f = \sigma_2/\sigma_1$ (trị suy biến của $J_f$) | $s_f = 1$: ô caro vuông hoàn hảo |
-| Điểm biến dạng tổng hợp | $D_f = \sqrt{(\rho_f/\rho^* - 1)^2 + (1 - s_f)^2}$ | Nguồn của Distortion RMS / max |
-| Số ô caro hiển thị | $n_{tiles} = 1 / (\rho^* \cdot K)$ | Để 1 ô $\approx K$ mm (tương đối); $K$ là slider |
-
-**Miền đo (chốt phương án A):**
-- **Đo** distortion $\rho_f, s_f, D_f$ trên **lưới Evaluated** (`depsgraph` — đã gồm Subdivision Surface) vì đó chính là bề mặt dao CNC ăn vào.
-- **Sửa/relax UV** trên **Base Cage** (lưới gốc), trọng số truyền ngược theo diện tích mặt.
-- **Chính sách cache:** khi đang kéo cọ (mỗi frame) $\to$ chỉ chạy solver cục bộ trên cage, **không** đánh giá lại depsgraph. Khi **thả chuột / kết thúc modal** $\to$ mới đánh giá lại evaluated và refresh heatmap.
-
-### 2.4. Đặc tả Thuật toán Auto-Seam Assist (5 bước)
-
-| Bước | Nội dung | Chi tiết |
-| :--- | :--- | :--- |
-| **B1. Chỉ số hình học** | Tính song song numpy toàn lưới | Góc khuyết $\delta(v) = 2\pi - \sum_i \theta_i$ (đỉnh chóp $\delta > 0$); góc nhị diện $\theta_e$; độ khuất $h(v)$ bằng raycast trục chính |
-| **B2. Giá cắt mỗi cạnh** | Cạnh dài / ít gấp / mặt lộ = đắt | $c(e) = L_e \cdot (1 + \lambda_c \cdot \phi_{crease}(e)) \cdot h(e)$, $h = 0.3$ khuất, $1.0$ lộ |
-| **B3. Cây cắt (Cut Graph)** | Đa nguồn Dijkstra (`heapq`) từ tập **đỉnh chóp** + **biên lưới** $\to$ hạ topology về dạng đĩa ($\chi = 1$) | Họ thuật toán Seamster (Sheffer & Hart 2002) |
-| **B4. Dự báo (không ghi mesh)** | Unwrap thử **trong RAM trên bản sao** | Xuất: số mảng, Distortion RMS, Distortion max, **Overlap count** |
-| **B5. Áp dụng / Bàn giao** | `[Áp dụng]` ghi `edge.use_seam` + relax per-island thật; `[Sang Tab 2]` nạp sẵn seam đề xuất; `Ctrl+Z` khôi phục bitmask seam cũ | 1 bước undo nguyên khối |
-
-**Slider `Aggressiveness`** = ngưỡng $\delta$ phát hiện đỉnh chóp + ngân sách tổng chiều dài cắt. Kéo slider $\to$ chạy lại B3–B4 (debounce 150ms), **chưa** ghi vào mesh.
-
-### 2.5. Ranh giới Tab 1 ↔ Tab 2 (chống trùng lặp — Single Source of Truth)
-
-| Tiêu chí | Tab 1: Auto-Seam Assist | Tab 2: Seam Editor |
-| :--- | :--- | :--- |
-| Bản chất | **Tự động, theo thuật toán** — mục tiêu *mở khóa topology* để relax được | **Thủ công, phẫu thuật** — mục tiêu *mỹ thuật / chính xác* theo ý đồ |
-| Cơ chế | Góc khuyết + nhị diện + Dijkstra đa nguồn | 4 công cụ tay: A-B Picker, Bisect Plane, Projection Silhouette, Face Cluster Border |
-| Dữ liệu ghi | `mesh.edges[i].use_seam` | `mesh.edges[i].use_seam` **(cùng một tập duy nhất)** |
-| Kết quả | Cây cắt gợi ý (màu tím, độ dày nét theo độ tin cậy) + bảng số liệu dự báo | Vệt Seam dạ quang do người dùng vạch |
-
-Không tồn tại state seam thứ hai. Tab 1 chỉ *đề xuất*, Tab 2 *biên tập* — cùng ghi vào một tập cạnh.
-
-### 2.6. Kiến trúc Module (bám chuẩn repo: file 300–500 dòng, `core/` thuần Python)
-
-```
-src/bscu/core/uv_metrics.py     # Jacobian, singular values, rho_f, rho*, D_f, overlap (numpy, KHÔNG bpy)
-src/bscu/core/uv_relax.py       # ARAP / LSCM solver, numpy CG tự viết (KHÔNG scipy), xử lý nullspace
-src/bscu/core/seam_graph.py     # góc khuyết, nhị diện, giá cắt, Dijkstra đa nguồn -> cut graph
-src/bscu/bridge/mesh_adapter.py # Ranh giới DUY NHẤT chạm bpy: bpy.types.Mesh <-> mảng numpy
-src/bscu/bridge/job_runner.py     # Hàng đợi + worker thread cho core/; apply kết quả trên main thread qua timer
-src/bscu/nodes/checker_overlay.py    # Node group Caro procedural (không phụ thuộc ảnh texture)
-src/bscu/properties/uv_properties.py # PropertyGroup Tab 1
-src/bscu/operators/op_auto_seam.py   # Phân tích + đề xuất cây cắt
-src/bscu/operators/op_uv_relax_all.py
-src/bscu/operators/op_uv_brush.py    # Modal operator + GPU draw overlay (F / Shift+F / pressure)
-src/bscu/ui/panel_caro_map.py
-src/bscu/ui/panel_tabs.py         # Header 4 Tab (enum Scene.bscu_active_tab) dùng chung cho mọi sub-panel
-```
-
-**Ràng buộc kỹ thuật đã kiểm chứng trên máy này:**
-- Dev python: `numpy 2.3.4` ✅ — `scipy` ❌ $\Rightarrow$ solver **phải** dùng Conjugate Gradient tự viết trên numpy.
-- `core/` hiện chỉ dùng stdlib (`math`) — sẽ thêm `numpy`, **vẫn không import `bpy`** để unit test thuần Python chạy $< 1$s.
-- **Không** dùng `mathutils` trong `core/` (chỉ tồn tại bên trong Blender $\Rightarrow$ làm hỏng unit test thuần Python).
-
-### 2.7. Tiêu chí Nghiệm thu (Gate) cho Tab 1
-
-- Distortion RMS sau relax $< 3\%$ trên bộ test: sphere, torus, saddle, phôi vòm CNC. **Overlap $= 0$.**
-- Auto-Seam trên **sphere kín** (genus 0) phải đề xuất được cây cắt hợp lệ và kéo distortion từ $>15\%$ về $<3\%$.
-- Thời gian: metric + auto-seam trên 200k tri $< 3$s (chạy nền có tiến trình); cọ brush $\geq 30$ fps.
-- Unit test thuần Python: Jacobian trên lưới tổng hợp **đã biết trước** kết quả (mặt dãn $2\times$ theo U $\Rightarrow$ phải báo distortion $100\%$).
-
-### 2.8. Quyết định vận hành đã chốt cho Tab 1
-
-**D1 — Mô hình tính toán nền: worker thread cho `core/`, main thread cho `bpy`.**
-- **Ranh giới:** `core/` (numpy thuần) chạy trên worker thread; **mọi** đọc/ghi `bpy` (đọc mesh, ghi `uv_layers`, đổi material slot, bật cờ "On Cage") chỉ chạy trên main thread, trong callback timer của modal operator.
-- **Hợp đồng dữ liệu:** main thread trích mesh thành mảng numpy read-only → `queue.Queue`; worker trả kết quả về `queue.Queue`; timer của modal operator apply kết quả.
-- `core/` không bao giờ nhận đối tượng `bpy`; mọi tham số đi qua mảng hoặc dataclass thuần.
-- **Lý do:** `bpy` không thread-safe — đẩy cả pipeline vào thread sẽ crash ngẫu nhiên khi người dùng vẫn tương tác với scene.
-- **Hệ quả:** Tab 2 và Tab 3 dùng **cùng** mô hình này, nhờ đó nhiều island có thể giải song song.
-
-**D2 — Overlay Caro: material slot ở chế độ object-linked.**
-- Khi vào Tab 1: tạo (nếu chưa có) một material slot phụ, gán `Material` Caro procedural với `slot.link = 'OBJECT'`.
-- Vật liệu gốc của mesh (`link == 'DATA'`) **không bị chạm vào**; rời Tab chỉ cần trả `link = 'DATA'` và dọn slot phụ.
-- **Khôi phục tự động** tại 5 mốc: rời Tab 1, đổi active object, đổi Object Mode, `bpy.app.handlers.save_pre` (trước khi lưu file), và `unregister()`.
-- Shader do node group sinh (`nodes/checker_overlay.py`), **không phụ thuộc ảnh texture**: tần số lấy từ $\rho^*$ + hằng số $K$ của mục 2.3 nên 1 ô luôn ứng với $K$ mm thực, đổi được tức thì khi kéo slider.
-
-**D3 — Cọ 3D tác động trực tiếp lên Base Cage (bật hiển thị "On Cage").**
-- Bắt đầu cọ: bật cờ hiển thị lồi thô (cờ "On Cage" của Subsurf, hoặc tạm ẩn các modifier sinh bề mặt) để `ray_cast` trúng **đúng** lồi UV cần sửa.
-- Ghi UV thẳng vào base cage — **không** cần bản đồ ánh xạ `evaluated ↔ cage` (bản đồ đó vỡ với Boolean/Mirror/Array vì sinh mặt không có cha tương ứng).
-- Kết thúc / thả chuột / hủy: tắt cờ hiển thị, chạy lại metric trên `evaluated`, refresh heatmap — đúng chính sách cache ở mục 2.3.
-- Nếu mesh không có cage dùng được (lồi gốc không tồn tại vì hình học sinh hoàn toàn từ modifier): **khoá chức năng cọ** và hiện lý do cụ thể, không fallback im lặng.
-- Nguyên tắc đo/sửa giữ nguyên như mục 2.3: **đo trên `evaluated`, sửa trên `cage`**.
-
-**D4 — Vỏ điều hướng: N-panel của 3D Viewport, trạng thái chia hai tầng.**
-- 4 sub-panel dọc trong N-panel của 3D Viewport (tab category `BSCU`), chuyển tab bằng enum `Scene.bscu_active_tab` ⇒ giữ được tab đang mở khi đổi object hoặc mở file khác.
-- `Object.bscu.*` (`properties/uv_properties.py`): **mọi tham số thuộc phôi** — chế độ overlay, kích thước ô, bật/tắt heatmap, thuật toán relax, số vòng lặp, đối xứng, mức độ cắt Auto-Seam, bán kính/lực cọ.
-- `Scene.bscu_active_tab` + cờ overlay tạm: **trạng thái phiên làm việc**, không gắn vào object.
-- Panel luôn bám theo `context.object` đang active; không có khái niệm "phôi được chọn" riêng.
-
----
-
-## 3. TAB 2: SEAM — TÁCH MẢNG BỀ MẶT 3D THÔNG MINH
-
-### 3.1. Mục đích & Cơ chế Nền tảng
-- **Mục tiêu:** Cắt bề mặt phôi 3D phức tạp thành từng mảng độc lập (UV Islands/Patches) để khi trải phẳng ra không gian 2D, các mảng này không bị tự đè lên nhau (Self-overlapping) và không bị rách vỡ hình học.
-- **Hệ quả kỹ thuật:** Phôi 3D dạng vòm, tượng thú, hoặc phù điêu uốn lượn có đặc tính topo kín hoặc nhiều hốc sâu. Cắt đường Seam chuẩn xác tại các nếp gấp tự nhiên (crease) hoặc ranh giới phân vùng giúp bản vẽ 2D Height Map trải phẳng tối đa diện tích hữu dụng.
-
-```
-+-----------------------------------------------------------------------+
-|  Tab 1: Caro Map  |  [Tab 2: Seam]  |  Tab 3: Unwrap  | Tab 4: Height |
-+-----------------------------------------------------------------------+
-| CÁC CHẾ ĐỘ TẠO ĐƯỜNG SEAM (SEAM CREATION MODES)                       |
-|                                                                       |
-| 1. [ CHUỖI ĐƯỜNG SINH & ĐIỂM ĐẦU / CUỐI (Shortest Path Picker) ]      |
-|    - Click chọn Điểm A -> Click chọn Điểm B: Tự động bắt đường ngắn   |
-|      nhất bám theo đường sinh mô hình (Geodesic / Edge Loop).         |
-|    - [ Đánh dấu Seam (Mark Seam) ]  [ Xóa Seam (Clear Seam) ]         |
-|                                                                       |
-| 2. [ MẶT PHẲNG THAM CHIẾU CẮT (Cutting Plane Bisect) ]               |
-|    - Tạo mặt phẳng cắt: [ Dựng Mặt Phẳng Bisect ]                     |
-|    - Tương tác Gizmo: Xoay / Tịnh tiến mặt phẳng cắt xuyên qua phôi.  |
-|    - Phạm vi cắt: (o) Toàn bộ mô hình  ( ) Chỉ các mặt được chọn      |
-|    - [ Cắt & Tạo Seam dọc giao tuyến (Slice & Mark Seam) ]            |
-|                                                                       |
-| 3. [ CHIẾU MẶT PHẲNG THAM CHIẾU (Projection Silhouette Boundary) ]    |
-|    - Chọn góc nhìn hoặc mặt phẳng tham chiếu (Top / Front / Custom).   |
-|    - Chiếu các mặt đang chọn lên mặt phẳng tham chiếu.                |
-|    - [ Lấy Chu vi Viền bóng làm Seam (Silhouette to Seam) ]           |
-|                                                                       |
-| 4. [ ĐƯỜNG VIỀN TỔ HỢP MẶT (Face Cluster Perimeter) ]                 |
-|    - Quét chọn 1 cụm mặt (Brush / Linked Flat Faces).                 |
-|    - [ Tạo Seam bao quanh Vùng chọn (Border of Selection) ]           |
-|                                                                       |
-| KIỂM SOÁT & CẢNH BÁO TOPO (SEAM VALIDATOR)                            |
-| - Số lượng mảng độc lập (Islands): 3 mảng                             |
-| - Trạng thái Topo: [HỢP LỆ - Dạng Đĩa (Disk Topology Chi=1)]          |
-| - Cảnh báo: [!] 2 đường cụt (dead-end) -> [ Nhảy tới điểm cụt ]       |
-|                                                                       |
-| HIỂN THỊ & PHỤ TRỢ                                                    |
-| - Overlay Seam dạ quang dày: [BẬT] (không dùng vệt đỏ 1px mặc định)   |
-| - Ẩn mảng đang chọn: [ Ẩn (Hide) ]   [ Hiện tất cả (Unhide) ]         |
-|                                                                       |
-| PREVIEW 2D LIÊN TỤC (TWO-TIER LIVE PREVIEW): [BẬT]                    |
-| - Khi KÉO chuột : solver nhanh, chỉ island bị đổi, ~10 Hz             |
-| - Khi COMMIT    : solver chuẩn (ARAP 100 iter) + kiểm Overlap         |
-| - Trạng thái: [Đang tính...] Islands: 4 | Overlap: 0 | RMS: 2.1%      |
-+-----------------------------------------------------------------------+
-```
-
-### 3.2. Chi tiết 4 Công cụ Tạo Seam Chuyên biệt
-1. **Phương pháp 1: Shortest Path & Edge Loop Picking (Chuỗi liên tục)**
-   - Người dùng click chọn đỉnh/cạnh bắt đầu (Start Segment), giữ `Ctrl` và click điểm kết thúc (End Segment).
-   - Hệ thống dùng thuật toán Dijkstra có trọng số góc uốn (Angle-weighted shortest path) để tìm đường chạy tự nhiên men theo các rãnh võng của khối 3D.
-   - Nhấn phím tắt `Space` để xác nhận gán thành Seam (hiển thị màu cam dạ quang nổi bật trên 3D).
-2. **Phương pháp 2: Cutting Reference Plane (Mặt phẳng cắt Bisect)**
-   - Tạo một Gizmo mặt phẳng ảo (Interactive Cutting Gizmo) trên Viewport.
-   - Người dùng xoay mặt phẳng đến vị trí mong muốn (ví dụ: cắt đôi phôi đối xứng theo trục X).
-   - Hệ thống thực hiện **cắt ảo** (không cắt hình học — xem D5 ở mục 3.8): dò chuỗi cạnh bị mặt phẳng cắt qua, chuẩn hoá thành chuỗi liên tục rồi đánh dấu toàn bộ làm Seam.
-3. **Phương pháp 3: Projection Reference Plane (Chiếu & Lấy viền bóng Silhouette)**
-   - Phù hợp với trường hợp phôi có góc nghiêng 2.5D phức tạp: Đặt mặt phẳng chiếu song song với hướng nhìn thiết kế chính.
-   - **Thuật toán chuỗi viền bóng:** lấy mọi cạnh có hai mặt kề nằm khác phía so với hướng nhìn $\vec{d}$, tức $\big(\vec{n}_1 \cdot \vec{d}\big)\big(\vec{n}_2 \cdot \vec{d}\big) < 0$. Quét tuyến tính trên cảnh ($O(E)$), chính xác ngay cả với hốc lõm, và **không** cần bước ánh xạ ngược không xác định từ cạnh 2D về cạnh 3D.
-4. **Phương pháp 4: Face Cluster Boundary (Đường bao tổ hợp mặt)**
-   - Người dùng sử dụng công cụ Box Select hoặc Paint Select để quét chọn một mảng bề mặt (ví dụ: cánh hoa, mặt trán, vạt áo).
-   - Bấm `[Border of Selection]`: Hệ thống lọc ra tất cả các cạnh biên chỉ có 1 mặt thuộc vùng chọn và 1 mặt nằm ngoài vùng chọn (`edge.is_boundary` đối với selection set) và gán `seam = True`.
-
-### 3.3. Cơ chế Khắc phục Lỗi Topo (Seam Error Recovery)
-- Nếu đường Seam bị hở (không khép kín thành chu vi hoặc không chạy ra mép ngoài của phôi), Tab 2 sẽ hiển thị cảnh báo: *"Cảnh báo: Tồn tại đường cắt cụt (Dead-end Seam) có thể gây méo khi trải phẳng"*, đồng thời highlight các điểm đầu mút cụt bằng vòng tròn nhấp nháy màu vàng để người dùng nối kín.
-
-**Chỉ số kiểm toán Topology (Seam Validator):**
-
-| Chỉ số | Công thức / Cách xác định | Ngưỡng hợp lệ |
-| :--- | :--- | :--- |
-| Số mảng | Số thành phần liên thông của đồ thị mặt sau khi cắt theo tập Seam | $\ge 1$ |
-| Đặc trưng Euler mỗi mảng | $\chi = V - E + F$ | $\chi = 1$ (dạng đĩa) là mục tiêu; $\chi = 2$ còn kín $\Rightarrow$ chưa cắt tới; $\chi < 1$ có lỗ/handles |
-| Điểm cụt (Dead-end) | Đỉnh có **đúng 1** cạnh Seam kề | Phải $= 0$ |
-| Đỉnh chóp còn sót | $\delta(v) = 2\pi - \sum_i \theta_i > \tau$ mà không nằm trên cây cắt | Phải $= 0$ |
-| Chồng lấn sau trải | Đếm cặp mặt giao nhau trong không gian UV | Phải $= 0$ |
-
-### 3.4. Kiến trúc Preview 2D Liên tục (Two-Tier Live Preview) — chốt phương án C
-
-**Vấn đề:** unwrap lại toàn phôi theo từng frame ở mức 200k tam giác là bất khả thi về mặt tính toán. Phương án C chỉ khả thi nếu chia làm 2 tầng chất lượng:
-
-| Tầng | Kích hoạt | Phạm vi | Solver | Tần suất | Mục đích |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Preview nhanh** | Trong lúc **kéo/di chuột** | Chỉ các **island bị ảnh hưởng** bởi đường cắt tạm | LSCM warm-start, `iterations = 5`, chạy trên **cage** | Throttle **100 ms** ($\approx 10$ Hz) | Phản hồi thị giác tức thì, không khóa UI |
-| **Kết quả chuẩn** | Khi **commit** (Space / thả chuột) | Cùng các island bị ảnh hưởng | ARAP đầy đủ, `iterations = 100`, đo trên **evaluated** | 1 lần / thao tác | Số liệu chính thức: RMS, Overlap, χ |
-
-**Cơ chế cache (điều kiện để C chạy nổi):**
-- Khóa cache mỗi island: `hash(frozenset(edge_ids))` từ tập cạnh Seam của island đó.
-- Chỉ island có khóa thay đổi mới bị **invalidate** và tính lại. Các island còn lại giữ nguyên kết quả cũ (không tính lại).
-- Khi đang kéo: đường cắt đang chọn là **tạm thời** (chưa ghi `use_seam`). Hệ thống cắt ảo trong RAM, tính lại chỉ phần bị ảnh hưởng, rồi vẽ.
-- Kiểm Overlap **tăng dần**: spatial hash theo bbox UV của từng mặt; chỉ đối chiếu trong phạm vi island vừa đổi.
-- Nếu worker chưa xong trong 100 ms: giữ khung preview cũ + hiện hiệu ứng "Đang tính..." (không chặn thao tác).
-
-### 3.5. Hiển thị & Phụ trợ (đã chốt, không cần lựa chọn)
-- **Overlay Seam dạ quang dày:** không dùng vệt đỏ 1 pixel mặc định của Blender (vô hình trên phôi lồi lõm). Vẽ bằng GPU draw handler: đường dày, phát sáng, nổi rõ trên mọi góc nhìn.
-- **Ẩn mảng đang chọn (`Hide Island`):** khi cắt được một cục, ẩn nó đi để nhìn/rạch được vào các hốc sâu bên trong. Có nút khôi phục toàn bộ.
-- **Cây cắt gợi ý từ Tab 1:** nếu người dùng bấm `[Sang Tab 2 tinh chỉnh tay]` ở Auto-Seam Assist, tập Seam đề xuất được nạp sẵn và highlight để biên tập tiếp.
-
-### 3.6. Module cho Tab 2 (bám chuẩn repo: file 300–500 dòng, `core/` thuần Python)
-
-```
-src/bscu/core/uv_islands.py      # Tách island từ tập seam, đếm island, chi = V-E+F, phát hiện dead-end
-src/bscu/core/unwrap_solver.py   # LSCM/ARAP hai tầng (preview warm-start + full), overlap check tăng dần
-src/bscu/core/uv_metrics.py      # Dùng lại từ Tab 1 (rho_f, D_f)
-src/bscu/core/seam_graph.py      # Dùng lại từ Tab 1 (Dijkstra trọng số góc uốn cho A-B Picker)
-src/bscu/bridge/mesh_adapter.py  # Mở rộng: bisect ảo, transfer UV khi topology đổi
-src/bscu/operators/op_seam_picker.py    # A-B Picker (modal, Ctrl+click, Space commit)
-src/bscu/operators/op_seam_bisect.py    # Cutting Plane Bisect + Gizmo
-src/bscu/operators/op_seam_project.py   # Projection Silhouette
-src/bscu/operators/op_seam_cluster.py   # Face Cluster Perimeter
-src/bscu/operators/op_seam_validate.py  # Kiểm toán topo + nhảy tới điểm cụt
-src/bscu/ui/panel_seam.py
-src/bscu/draw/canvas_2d.py      # Canvas 2D dùng chung Tab 2/3/4: nền tảng định nghĩa ở mục 1.1
-src/bscu/draw/seam_overlay.py   # GPU draw handler: seam dạ quang + khung preview 2D
-```
-
-### 3.7. Tiêu chí Nghiệm thu (Gate) cho Tab 2
-- Preview lúc kéo duy trì $\ge 10$ Hz trên phôi 200k tri, **không khóa UI thread** (thao tác được liên tục khi đang tính).
-- Chỉ số island và $\chi$ hiển thị **đúng 100%** trên bộ test tổng hợp đã biết trước kết quả.
-- Phát hiện dead-end đúng **100%** trên bộ ca nhân tạo (đường cắt cố ý bỏ lửng).
-- Commit một đường seam $\to$ số liệu chuẩn cập nhật $\le 2$s trên 200k tri.
-- Unit test thuần Python: đếm island + $\chi$ + dead-end trên lưới chắp ghép (không cần Blender).
-
-### 3.8. Quyết định vận hành đã chốt cho Tab 2
-
-**D5 — Cutting Plane Bisect: cắt ảo, mesh bất biến.**
-- Dò chuỗi cạnh bị mặt phẳng gizmo cắt qua (raycast/điểm gần nhất mỗi cạnh lên mặt phẳng), chuẩn hoá thành chuỗi liên tục, rồi gán `use_seam` trong **một** bước undo.
-- **Không** dùng `bmesh.ops.bisect_plane`: hàm này sinh cạnh mới cắt ngang mặt, làm hỏng UV các mặt bị cắt và phá vỡ ánh xạ cage ↔ evaluated đã chốt ở D3.
-- Nhu cầu tách mesh vật lý (để gán vật liệu khác) **nằm ngoài phạm vi BSCU** — người dùng dùng Bisect sẵn có của Blender.
-
-**D6 — Preview 2D dùng chung canvas 2D của mục 1.1.**
-- Tab 2 không có bản preview riêng: nó bật **lớp nội dung "islands reflow"** trên canvas 2D dùng chung, và tự sắp xếp area khi cần.
-- Nhờ vậy chỉ có **một** hệ toạ độ và **một** bộ hit-test/snap cho cả Tab 2, Tab 3, Tab 4, thay vì ba bản hiển thị không đồng bộ.
-
-**D7 — Cache island và cách nhận diện island.**
-- Khóa cache: `hash(frozenset(edge_ids))` của tập cạnh seam thuộc island; chỉ island có khóa đổi mới bị invalidate (cơ chế đầy đủ ở mục 3.4).
-- Cache **chỉ sống trong RAM trong phiên làm việc**, không ghi ra file: island là dữ liệu dẫn xuất, tái tính được từ `BSCU_UV_Active` + tập seam.
-- Island luôn được nhận diện lại theo **tập mặt 3D gốc**, **không** theo `island_id` (ID có thể đổi khi người dùng sửa seam) — khớp với quy tắc 3 ở mục 6.
-
----
-
-## 4. TAB 3: UNWRAP — TRẢI PHẲNG MẶT 3D THÀNH BẢN RẬP 2D
-
-### 4.1. Mục đích & Cơ chế Nền tảng
-- **Mục tiêu:** Dựa trên các đường Seam đã phân chia ở Tab 2, trải phẳng các mảng 3D thành các tấm phẳng 2D (Bản rập UV / Flattened Canvases).
-- **Hệ quả kỹ thuật:** Mỗi tấm phẳng 2D sẽ đóng vai trò là một "Tờ giấy vẽ CAD" ở Tab 4. Bất kỳ nét vẽ hoặc độ cao nào sinh ra trên tờ giấy 2D này sẽ được chiếu ngược tức thì lên đúng mảng 3D tương ứng.
-
-```
-+-----------------------------------------------------------------------+
-|  Tab 1: Caro Map  |  Tab 2: Seam  |  [Tab 3: Unwrap]  | Tab 4: Height |
-+-----------------------------------------------------------------------+
-| THUẬT TOÁN TRẢI PHẲNG (HYBRID ENGINE)                                 |
-| - Tầng 1 (solver nền, API Blender chạy bằng C):                       |
-|   * uv.unwrap(method='ANGLE_BASED')  ~= ABF++                         |
-|   * uv.average_islands_scale()  -> cân bằng mật độ texel mọi island   |
-| - Tầng 2 (lớp refine numpy của BSCU, tối ưu trực tiếp chỉ số D_f):    |
-|   * Số bước lặp tinh chỉnh: [ 100 ]                                   |
-|   * Chốt chặn Overlap: [BẬT]  (rollback nếu overlap tăng)             |
-|                                                                       |
-| BỐ TRÍ MẢNG PHẲNG (ISLAND PACKING & LAYOUT)                          |
-| - Xoay căn chỉnh thớ gỗ/trục gia công (Align Longest Axis): [BẬT]     |
-| - Khoảng cách đệm an toàn giữa các mảng (Margin): [ 5.0 mm ]         |
-| - Tỷ lệ đồng nhất (Uniform Real-World Scale): [ 1.0 mm 2D = 1.0 mm 3D]|
-|                                                                       |
-| DANH SÁCH CÁC MẢNG ĐÃ TRẢI (UNWRAPPED ISLANDS)                        |
-| [>] Mảng 1: Bề mặt trung tâm (Diện tích: 120x85 mm)  [Chọn để vẽ ở T4]|
-| [>] Mảng 2: Viền vòm bên trái (Diện tích: 45x150 mm) [Chọn để vẽ ở T4]|
-| [>] Mảng 3: Viền vòm bên phải (Diện tích: 45x150 mm) [Chọn để vẽ ở T4]|
-|                                                                       |
-| BẢO TRỢ BIẾN DẠNG & CHỒNG LẤN                                         |
-| - Trùng đè mảng (Overlaps): 0 phát hiện [AN TOÀN]                     |
-| - Độ biến dạng diện tích cực đại: 2.1%                                |
-|                                                                       |
-| [ >> TIẾN VÀO TAB 4 ĐỂ VẼ HOA VĂN & BƠM KHỐI << ]                     |
-+-----------------------------------------------------------------------+
-```
-
-### 4.2. Chi tiết UX Tương tác & Khung nhìn Kép (Dual Viewport Layout)
-1. **Bố cục khung nhìn tự động:** Khi người dùng chuyển sang Tab 3, Blender tự động chia màn hình thành 2 cửa sổ:
-   - **Bên phải:** 3D Viewport phôi thật (giúp quan sát mảng nào đang được kích hoạt).
-   - **Bên trái:** canvas 2D dùng chung của mục 1.1 (một 3D Viewport ở chế độ canvas) hiển thị các mảng đã trải phẳng trên nền lưới milimet chính xác.
-   - Cả hai vùng đều là 3D Viewport: người dùng vẫn tự do xoay/zoom cửa sổ phôi; vùng canvas chỉ khoá hướng nhìn khi con trỏ nằm bên trong nó.
-2. **Tương tác Chọn đồng bộ (Synchronized Selection):**
-   - Click chuột vào một mảng trên 2D $\to$ Mảng tương ứng trên mô hình 3D phát sáng (Highlight viền cam).
-   - Ngược lại, click chọn bất kỳ mặt nào trên 3D $\to$ Tự động focus vào mảng 2D tương ứng trên bản rập.
-3. **Cơ chế Cập nhật Ngược - Xuôi (Bi-directional Reactivity):**
-   - Nếu người dùng quay lại Tab 2 thêm/xóa đường Seam, hệ thống tự động chạy lại thuật toán Unwrap ở chế độ nền. Khi trở lại Tab 3, danh sách mảng đã được làm mới hoàn toàn.
-   - Các mảng 2D được chuẩn hóa tỷ lệ theo thế giới thực ($1:1$ Metric Scale) để kích thước mm của chi tiết điêu khắc trên bản rập khớp chính xác với dao phay CNC ngoài thực tế.
-
-### 4.3. Động cơ Hybrid 2 Tầng (chốt phương án C)
-
-| Tầng | Công cụ | Vai trò | Lý do chọn |
-| :--- | :--- | :--- | :--- |
-| **Tầng 1 — Solver nền** | `uv.unwrap(method='ANGLE_BASED')`<br>`uv.average_islands_scale()`<br>`uv.minimize_stretch(iterations=100)`<br>`uv.pack_islands(margin, rotate, scale)` | Trải phẳng thô + cân bằng mật độ texel + dàn đều lực căng + xếp mảng | Đã là C code trong Blender: nhanh, ổn định, không nên viết lại |
-| **Tầng 2 — Refine của BSCU** | Solver numpy trong `core/uv_refine.py` | Tối ưu **trực tiếp** chỉ số $D_f$ đã định nghĩa ở mục 2.3, kèm **chốt chặn Overlap** | Blender tối ưu theo metric của nó, không đảm bảo ngưỡng RMS $<3\%$ của ta |
-
-**Điều kiện dừng của Tầng 2:** $D_f^{RMS} < 3\%$ **hoặc** chạm `max_iterations`. Nếu overlap **tăng** so với trước khi refine $\Rightarrow$ **rollback** về kết quả Tầng 1 (không bao giờ để refine làm hỏng bản trải).
-
-**Bắt buộc:** `uv.average_islands_scale()` phải luôn chạy. Nếu mỗi island giữ một mật độ texel khác nhau thì hoa văn ở Tab 4 sẽ **to nhỏ khác nhau giữa các mảng** dù cùng một nét vẽ — đây là lỗi âm thầm nguy hiểm nhất của cả pipeline.
-
-### 4.4. Packing theo Tỉ lệ Thật (Uniform Metric Packing)
-
-- **Không** scale tự do từng island. Toàn bộ island dùng **một hệ số scale duy nhất**, suy ra từ $\rho^*$ của Tab 1.
-- Margin tính bằng **mm thực**, không phải đơn vị UV.
-- **Khổ canvas gia công ($W \times H$ mm) là tuỳ chọn nhưng có cảnh báo:** nếu bản rập vượt khổ nhập, panel hiện cảnh báo kèm kích thước thực tế; BSCU **không** tự thu nhỏ bản rập, vì tự đổi tỷ lệ sẽ phá cam kết tỷ lệ $1:1$ ở chính mục này.
-- **Align Longest Axis:** xoay island sao cho trục dài nhất song song trục chạy dao — giảm răng cưa khi gia công và giữ hướng thớ vật liệu.
-
-### 4.5. Đồng bộ Hai chiều & Cache (tái dùng từ Tab 2)
-- Bảng ánh xạ `island_id ↔ tập mặt 3D` là **nguồn sự thật duy nhất** cho việc chọn đồng bộ.
-- Quay lại Tab 2 sửa Seam $\Rightarrow$ chỉ **invalidate đúng island có khóa `hash(frozenset(edge_ids))` thay đổi**, các island còn lại giữ nguyên kết quả (tái dùng cơ chế cache ở mục 3.4).
-- Không có state UV thứ hai: `BSCU_UV_Active` vẫn là kênh UV duy nhất xuyên suốt 4 Tab.
-
-### 4.6. Module cho Tab 3
-
-```
-src/bscu/core/uv_refine.py       # Tầng 2: refine numpy tối ưu D_f + overlap guard + rollback
-src/bscu/core/uv_islands.py      # Dùng lại: danh sách island, diện tích mm, khóa cache
-src/bscu/bridge/uv_bridge.py     # Gọi bpy.ops.uv.* đúng context/override, đồng bộ selection
-src/bscu/operators/op_unwrap_all.py
-src/bscu/operators/op_pack_islands.py
-src/bscu/ui/panel_unwrap.py
-src/bscu/draw/island_overlay.py  # Highlight island tương ứng giữa 2D và 3D
-```
-
-### 4.7. Tiêu chí Nghiệm thu (Gate) cho Tab 3
-- $D_f^{RMS} < 3\%$ sau refine trên bộ test (sphere, torus, saddle, phôi vòm CNC).
-- **Overlap $= 0$**; nếu refine làm overlap tăng thì phải rollback (kiểm bằng test tiêm lỗi cố ý).
-- Chênh lệch mật độ texel giữa các island $< 1\%$ sau `average_islands_scale()`.
-- Sửa 1 đường Seam $\Rightarrow$ **chỉ** island bị ảnh hưởng được tính lại (đo bằng bộ đếm số lần gọi solver).
-- Layout 2 khung nhìn (3D $|$ 2D) tự mở đúng, chọn đồng bộ hai chiều hoạt động.
-
-### 4.8. Quyết định vận hành đã chốt cho Tab 3
-
-**D8 — Chuỗi lệnh chuẩn: chạy lại `average_islands_scale()` sau khi refine.**
-
-$$\text{unwrap} \to \text{average\_islands\_scale} \to \text{minimize\_stretch}(100) \to \textbf{refine}(D_f) \to \text{average\_islands\_scale} \to \text{pack\_islands}$$
-
-- Tầng 2 chỉ tối ưu hình dạng trong không gian UV, **không** giữ đẳng nhất mật độ texel giữa các island; thiếu bước đồng nhất lần hai thì gate "chênh lệch $< 1\%$" ở mục 4.7 mất hiệu lực.
-- Bước đồng nhất lần hai là C code sẵn có nên chi phí không đáng kể.
-- **Số liệu chính thức báo cho người dùng được đo lại sau bước cuối**, không dùng số đo tức thời trước khi pack.
-- Quy tắc rollback giữ nguyên: nếu refine làm overlap tăng, quay lại kết quả Tầng 1 rồi đi tiếp phần đồng nhất và pack.
-
-**D9 — Khổ canvas: chỉ cảnh báo, không tự thu nhỏ.**
-- Nhập khổ $W \times H$ (mm) là tuỳ chọn; nếu bản rập vượt khổ, panel hiện cảnh báo kèm kích thước thực tế của bản rập.
-- BSCU **không** tự thu nhỏ hay thu phóng bản rập để vừa khổ: bất kỳ tỷ lệ nào khác $1:1$ đều phá cam kết kích thước mm ở mục 4.4 và làm sai kích thước chi tiết đúc.
-
-
----
-
-## 5. TAB 4: HEIGHT MAP — 3-PANE CAD STUDIO & ĐIỀU KHIỂN KHỐI REAL-TIME
-
-### 5.1. Bố cục 3 Cột Studio Chuyên Biệt (3-Pane Studio Layout)
-> **Ánh xạ 3 cột này vào khung cửa sổ Blender** xem D12 ở mục 5.10.
-
-
-```
-+--------------------+------------------------------------------+-----------------------+
-|  LEFTBAR (Layers)  |         CENTERBAR (2D CAD Canvas)        |  RIGHTBAR (Inspector) |
-+--------------------+------------------------------------------+-----------------------+
-| [Eye] [Lock] [Add] | - Navigation: Pan (MMB), Zoom (Scroll)   | [Context: Line/Region]|
-|                    | - Snap: End, Mid, Nearest, Intersect     | - Height: 10.0mm      |
-| [>] Group 1        | - Draw: Line, Arc 3-pt, Spline           | - Blend: Add / Sub    |
-|   [*] Layer Nét vẽ | - Edit: Fillet, Chamfer, Trim, Extend    |                       |
-|   [o] Layer Màu sắc| - Associativity: Sửa nét -> Vùng tự nhảy | [Biểu đồ Spline dốc]  |
-|   [#] Layer Vùng   | - Region Manipulator: Mạng lưới đường    |   /‾‾\____  (Dot sel) |
-|                    |   sinh dốc (UV Grid) & Dot kéo thả       |                       |
-| (Drag-drop z-order)|   trực tiếp trên Viewport 2D             | [Biểu đồ Cắt vuông góc|
-+--------------------+------------------------------------------+-----------------------+
-```
-
-### 5.2. Leftbar — Quản lý Layer Phân tầng (Photoshop Style)
-- **Công cụ Header:**
-  - Nút Mắt (`Eye`): Bật/Tắt ẩn hiện toàn bộ nét vẽ và độ cao của Layer trên 3D Viewport.
-  - Nút Khóa (`Lock`): Đóng băng Layer chống chỉnh sửa vô ý.
-  - Nút Thêm Mới (`Add Layer`): Tạo Layer rỗng.
-  - Nút Tạo Nhóm (`Add Group`): Gom cụm nhiều Layer (ví dụ: "Nhóm Hoa Văn Sen", "Nhóm Chữ").
-- **Tương tác Kéo thả (Drag & Drop Z-Order):**
-  - Thứ tự Layer từ trên xuống dưới quy định thứ tự phủ đè độ cao: Layer nằm trên sẽ đè (Override hoặc Blend) lên Layer nằm dưới.
-- **3 Kiểu Layer Chuyên dụng (Thiết lập qua chuột phải hoặc Icon):**
-  1. **Layer Nét vẽ (Carving Stroke):**
-     - Chứa các đường vector dẫn đường (Open hoặc Closed curves).
-     - Dùng để tính toán rãnh vát chữ V (V-Carving), rãnh chỉ, khắc rãnh tròn (Ball-nose), hoặc đường chỉ bao.
-  2. **Layer Màu sắc (Color Tint):**
-     - Dùng để tô màu trực tiếp hoặc gán vật liệu riêng biệt (sơn thếp vàng, tạo màu gỗ khác tone) mà không làm biến đổi hình thái độ cao.
-  3. **Layer Vùng (Bounded Region):**
-     - Tự động sinh ra khi các nét vẽ của *Layer Nét vẽ* giao nhau tạo thành một chu trình khép kín.
-     - Chịu trách nhiệm đắp khối phù điêu dương ($Add$) hoặc khoét lòng chảo âm ($Subtract$).
-
-### 5.3. Centerbar — Môi trường Tương tác 2D CAD & Lưới Nắn Dốc
-- **Thao tác Khung nhìn Chuẩn CAD:**
-  - `MMB Drag`: Pan khung nhìn mượt mà.
-  - `Scroll Wheel`: Zoom tụ điểm tại con trỏ chuột.
-  - `LMB Click / Drag`: Chọn đối tượng hoặc quét vùng chọn (Box / Marquee Selection).
-- **Hệ thống Bắt điểm Thông minh (Smart Snapping HUD):**
-  - Hiển thị ký hiệu bắt điểm động khi rê chuột gần hình học:
-    - **Endpoint (Điểm đầu mút):** Hình vuông màu xanh lá $\Box$.
-    - **Midpoint (Trung điểm đoạn):** Hình tam giác màu vàng $\triangle$.
-    - **Nearest on Curve (Điểm trên đường):** Hình chữ X màu cam $\times$.
-    - **Intersection (Giao điểm giữa 2 đường):** Ký hiệu dấu cộng đỏ $+$.
-- **Bộ Công cụ Vẽ & Biến đổi Hình học (CAD Precision Tools):**
-  - `Line Tool`: Vẽ đoạn thẳng chính xác theo góc và chiều dài nhập số.
-  - `Arc 3-Point Tool`: Vẽ cung tròn đi qua 3 điểm (Start, End, Midpoint).
-  - `Spline / Bezier Tool`: Vẽ đường cong mượt với các điểm neo (Anchor Points) và tay đòn tiếp tuyến (Tangent Handles).
-  - `CAD Modifiers`:
-    - **Fillet (Bo góc tròn):** Chọn 2 đoạn giao nhau $\to$ Bo tròn với bán kính $R$.
-    - **Chamfer (Vát góc thẳng):** Vát mép thẳng với kích thước $D$.
-    - **Trim (Cắt tỉa):** Click vào đoạn thừa phía sau giao điểm để xóa bỏ tức thì.
-    - **Extend (Phóng dài):** Kéo dài đường thẳng tới khi chạm vào đường biên gần nhất.
-- **Tính Liên đới Hình thái (Topological Associativity - Planar Graph):**
-  - Giữa *Layer Nét vẽ* và *Layer Vùng* có sự gắn kết logic liên tục. Khi người dùng dùng công cụ di chuyển một điểm neo của đường nét, toàn bộ các Vùng kín tiếp giáp đường nét đó tự động biến dạng theo mà không cần người dùng vẽ lại vùng kín.
-- **Bộ Nắn Đường Sinh Dốc Cục Bộ (Region Slope Grid Manipulator):**
-  - Khi người dùng click chọn 1 Vùng kín trên Centerbar:
-    - Lập tức một mạng lưới đường sinh dốc nội suy (Patch Flow Lines / UV Grid) phủ kín bên trong vùng đó.
-    - Trên các giao điểm xuất hiện các điểm điều khiển (Control Dots).
-    - Người dùng có thể kéo thả các Dot này để nâng cao cục bộ hoặc hạ thấp một góc của vùng phù điêu (ví dụ: làm cánh hoa phồng ở giữa nhưng xẹp dẹp ở mép cuống).
-
-### 5.4. Rightbar — Bảng Thuộc tính Ngữ cảnh & Hệ Thống Biểu Đồ Dốc Đôi (Dual-Spline Profile Editor)
-> **Lưu ý bố cục:** hình vẽ minh hoạ *nội dung* của Inspector. Hai biểu đồ thực tế được vẽ như một lớp HUD neo trong vùng canvas 2D, không nằm trong N-panel — xem D11 ở mục 5.10.
-
-
-```
-+-------------------------------------------------------+
-| RIGHTBAR INSPECTOR                                    |
-+-------------------------------------------------------+
-| ĐỐI TƯỢNG ĐANG CHỌN: [ VÙNG: Cánh Hoa Trung Tâm ]      |
-|                                                       |
-| THÔNG SỐ ĐỘ CAO CƠ BẢN                                |
-| - Chiều cao cơ sở (Base Height): [ 8.0 mm ]           |
-| - Phương thức đắp: (o) Add (Đắp dương)  ( ) Subtract   |
-| - Góc vát chân (Bevel Angle): [ 45.0 ° ]              |
-|                                                       |
-| HỆ THỐNG BIỂU ĐỒ PROFILE ĐÔI (DUAL-SPLINE SYSTEM)     |
-|                                                       |
-| 1. BIỂU ĐỒ CHÍNH (Spline 1: Master Profile Curve)     |
-|    Biến thiên độ cao theo khoảng cách từ biên vào tâm: |
-|    Height                                             |
-|     ^     [Dot 1]                                     |
-|     |       /‾‾\________ [Dot 2]                      |
-|     |      /                                          |
-|     +----------------------------> Distance           |
-|    (Click chọn 1 Dot để mở Biểu đồ Cắt vuông góc)     |
-|                                                       |
-| 2. BIỂU ĐỒ CẮT VUÔNG GÓC (Spline 2: Cross-Section)    |
-|    Đang hiệu chỉnh cho: [ Dot 1 - Đỉnh Vòm ]           |
-|    Độ dốc theo phương tiếp tuyến / vuông góc lát cắt: |
-|    Height                                             |
-|     ^        /\                                       |
-|     |       /  \   (Vòm nhọn Gothic)                  |
-|     |      /    \                                     |
-|     +----------------------------> Width              |
-|                                                       |
-| ĐỐI TƯỢNG ĐANG CHỌN: [ ĐƯỜNG: Rãnh Gân Lá ]           |
-| - Profile dao đục: [ Ball-nose R3 mm  v]              |
-| - Chiều sâu đục (Cut Depth): [ -2.5 mm ]              |
-| - Biểu đồ Spline 2 cho Đường: Độ sâu biến thiên dọc nét|
-+-------------------------------------------------------+
-```
-
-1. **Tự động Chuyển Đổi Ngữ Cảnh Theo Selection:**
-   - **Khi chọn Đường (Stroke):** Inspector hiển thị đường kính dao (`tool_radius`), kiểu dao (`V-Bit`, `Ball-nose`, `End-mill`), độ sâu rãnh đục, và biểu đồ biến thiên độ sâu dọc theo chiều dài đường nét.
-   - **Khi chọn Vùng (Region):** Inspector hiển thị độ cao đắp nổi ($Add$) hoặc khoét lõm ($Subtract$), góc vát chân, và kích hoạt Hệ thống Biểu đồ Profile Đôi.
-2. **Hệ Thống Biểu Đồ Đôi (Dual-Spline Profile Editor):**
-   - **Spline 1 (Biểu đồ Master):**
-     - Trục hoành ($X$): Khoảng cách chuẩn hóa từ mép viền ngoài vào tâm vùng ($0.0 \to 1.0$).
-     - Trục tung ($Y$): Chiều cao tương đối ($0.0 \to 1.0$).
-     - Thể hiện dáng khối tổng quát: Mặt phẳng vát hộp, vòm cong elip, hay chóp nhọn.
-     - Trên đường cong Spline 1 có các điểm neo (Dots) có thể thêm/bớt/kéo thả.
-   - **Spline 2 (Biểu đồ Mặt cắt Ngang Cross-Section):**
-     - Khi người dùng click chọn 1 Dot cụ thể trên Spline 1, Spline 2 xuất hiện ngay bên dưới.
-     - **Đối với Vùng:** Spline 2 điều khiển độ dốc và biên dạng cong theo phương tiếp tuyến vuông góc với mặt cắt đi qua Dot đó. Điều này cho phép tạo các bề mặt phù điêu vặn xoắn phức tạp (như nếp gấp áo lượn sóng) mà đồ thị 1D truyền thống không làm được.
-     - **Đối với Đường:** Spline 2 định nghĩa tiết diện lát cắt của đường rãnh tại vị trí đó (đầu nét vuốt nhọn, thân nét sâu đều, đuôi nét thoai thoải).
-
-### 5.5. Kiến trúc Lưu trữ Canvas (chốt: Curve Object thật + HUD của canvas 2D)
-
-| Thành phần | Biểu diễn trong Blender | Ghi chú |
-| :--- | :--- | :--- |
-| **Layer Nét vẽ** | `bpy.types.Curve` (Bezier/NURBS), `use_cyclic_u` tùy nét | Nguồn sự thật của hình học |
-| **Layer Vùng** | `bpy.types.Curve` với `fill_mode = 'BOTH'`, đánh dấu `derived = True` + `source_edges` | Sinh tự động, **không** vẽ tay |
-| **Layer Màu sắc** | `bpy.types.Curve` (nét có `bevel_depth`) hoặc vùng có `fill_mode` | Chỉ ảnh hưởng vật liệu, **không** ảnh hưởng độ cao |
-| **Nhóm Layer** | `bpy.data.collections` lồng nhau | Kéo thả Z-order = thứ tự collection |
-| **Siêu dữ liệu** | Custom Properties trên object (`cnc_base_height`, `cnc_bevel_angle`, `cnc_bevel_depth`, `cnc_profile_shape`, `cnc_blend_mode`, `cnc_tool_radius`, `cnc_tool_profile`) | Khớp đúng mục 4 của `brainstorming.md` |
-| **HUD (Snap, Grid dốc, Dot, biểu đồ đôi)** | Một lớp HUD của canvas 2D (`draw/canvas_2d.py`) | Không bake vào hình học, thuần hiển thị/thao tác — xem D11 |
-
-**Không gian toạ độ — điểm quyết định:**
-- Mỗi **island** từ Tab 3 có một **khung toạ độ canvas cục bộ (Local Canvas Space)** đặt trên mặt phẳng 2D, kích thước đúng bằng kích thước thật của mảng (mm).
-- Người dùng vẽ trong local space của island. Khi bơm khối, hệ thống biến đổi Local Canvas $\to$ UV của island đó $\to$ bề mặt 3D.
-- Nhờ vậy: hoa văn **không bị méo** khi island bị xoay/di chuyển lúc packing lại, và tỉ lệ mm luôn được giữ.
-
-### 5.6. Tính Liên đới Hình học (Topological Associativity) — cơ chế thật
-
-Đây là phần khó nhất của Tab 4. Trình tự khi người dùng kéo một điểm neo của nét vẽ:
-
-```mermaid
-graph LR
-    A["User kéo điểm neo"] --> B["Đánh dấu Vùng phụ thuộc = DIRTY"]
-    B --> C["Trích các đoạn thẳng từ nét vẽ trong local space"]
-    C --> D["core/planar_graph.py: tách giao điểm, dựng half-edge"]
-    D --> E["Duyệt mặt phẳng bằng angular sort → danh sách mặt kín"]
-    E --> F["Đối chiếu Vùng cũ theo source_edges → tái sử dụng ID"]
-    F --> G["Rebuild Curve của Vùng + giữ nguyên Custom Properties"]
-    G --> H["Geometry Nodes tính lại Z_Height_Virtual"]
-```
-
-- `core/planar_graph.py` (thuần Python, **không bpy**): tách giao điểm, dựng cấu trúc half-edge, duyệt mặt bằng sắp xếp góc — đã nằm trong lộ trình Phase 1 của `brainstorming.md`.
-- **Tái sử dụng ID:** Vùng được khớp lại theo `source_edges` chứ không tạo mới, nên **không mất** `cnc_base_height` / biểu đồ Spline đã chỉnh.
-- **Gộp thao tác:** toàn bộ chuỗi B→G nằm trong **một bước undo** (không để người dùng phải Ctrl+Z nhiều lần).
-
-### 5.7. Hệ thống Biểu đồ Đôi — Cài đặt kỹ thuật
-
-- Dữ liệu: hai đường cong profile cho mỗi đối tượng (Spline 1 master, Spline 2 cross-section) + danh sách Dot kèm tham số, lưu trong Custom Properties của object.
-- **Hiển thị:** hai biểu đồ là **một lớp HUD của canvas 2D** (mục 1.1), neo vào góc vùng canvas; bấm 1 Dot trên Spline 1 sẽ mở biểu đồ Spline 2 ngay bên dưới. N-panel chỉ giữ số và slider, không vẽ biểu đồ.
-- Kéo Dot: modal operator trên canvas, `Shift` = ràng buộc trục, click đúp = đổi kiểu điểm neo (Sharp/Smooth).
-- **Tiêu thụ trường độ cao:** BSCU tính trường vào mesh attribute `cnc_height`; Geometry Nodes chỉ đọc attribute đó và đẩy đỉnh theo Normal — xem D10 ở mục 5.10.
-- **Liên đới ngược:** kéo Dot $\to$ ghi lại Custom Properties của object $\to$ tính lại `cnc_height` $\to$ bề mặt 3D cập nhật. Không có state thứ hai.
-
-### 5.8. Module cho Tab 4
-
-```
-src/bscu/core/planar_graph.py     # Giao điểm, half-edge, duyệt mặt phẳng -> danh sách Vùng (thuần Python)
-src/bscu/core/profile_curves.py   # Mô hình hoá Spline 1 & 2, Dot, nội suy
-src/bscu/properties/curve_properties.py  # PropertyGroup: cnc_base_height, bevel, blend, tool...
-src/bscu/core/height_field.py      # Tính SDF + profile lưới lấy mẫu -> mesh attribute cnc_height (thuần numpy)
-src/bscu/operators/op_draw_stroke.py     # Modal vẽ Line/Arc 3-pt/Spline + snapping
-src/bscu/operators/op_cad_edit.py        # Fillet / Chamfer / Trim / Extend
-src/bscu/operators/op_slope_grid.py      # Lưới đường sinh dốc: kéo Dot cục bộ trong Vùng
-src/bscu/ui/panel_parameters.py / panel_actions.py
-src/bscu/draw/cad_hud.py                 # Snap glyph, grid dốc, spline chart
-src/bscu/nodes/relief_displace.py # Node group DUY NHẤT của Tab 4: Set Position theo Normal + đọc attribute cnc_height
-```
-
-
-### 5.9. Tiêu chí Nghiệm thu (Gate) cho Tab 4
-- Kéo điểm neo nét vẽ $\to$ Vùng liên đới cập nhật $\le 50$ ms; **giữ nguyên** Custom Properties và biểu đồ Spline đã chỉnh.
-- Toàn bộ chuỗi cập nhật liên đới nằm trong **một bước undo**.
-- Biểu đồ Đôi phản hồi $\ge 60$ fps khi kéo Dot.
-- Bơm khối 3D cập nhật $\le 100$ ms cho thay đổi tham số đơn lẻ (đúng mục tiêu Real-time của `brainstorming.md`).
-- Vẽ và sửa hình bằng Curve Object thật: **Ctrl+Z / Ctrl+Shift+Z hoạt động nguyên vẹn**, file `.blend` lưu/mở lại không mất dữ liệu.
-
-### 5.10. Quyết định vận hành đã chốt cho Tab 4
-
-**D10 — Trường độ cao do BSCU tính, Geometry Nodes chỉ bơm.**
-- BSCU dựng lưới lấy mẫu chuẩn hoá (đúng mục 6.1 của `brainstorming.md`), raycast để lấy mặt nạ trong/ngoài, tính SDF cho từng nét/vùng với profile nội suy riêng, rồi ghi kết quả vào mesh attribute `cnc_height`.
-- Geometry Nodes chỉ còn **một** node group `relief_displace.py`: đọc `cnc_height` và đẩy đỉnh theo Normal.
-- **Lý do:** phôi là một object nên chỉ có một modifier; `Float Curve` chỉ bind được ở mức modifier, không thể mang profile riêng cho từng vùng. Bỏ SDF khỏi GN đồng thời đưa phép tính về `core/` — test được bằng unit test thuần Python và chạy được trên worker thread theo D1.
-
-**D11 — Biểu đồ đôi thuộc về canvas 2D, không vẽ trong N-panel.**
-- Hai biểu đồ là một lớp HUD của `draw/canvas_2d.py`: toạ độ, hit-test và vẽ do canvas tự quản lý, đồng bộ hoàn toàn với phần vẽ nét.
-- N-panel (tab phải) chỉ giữ số và slider. Không dùng draw handler region `UI` của N-panel vì phải tự tính phép chiếu toạ độ và xử lý thêm hit-test trong vùng hẹp.
-
-**D12 — Ánh xạ 3-Pane Studio vào khung cửa sổ Blender.**
-
-| Cột của thiết kế | Thực thể trong Blender |
+| Nhóm mặc định | Nội dung |
 | :--- | :--- |
-| LEFTBAR (Layers) | tab trái của N-panel VIEW_3D — `BSCU Layers` |
-| CENTERBAR (Canvas CAD 2D) | vùng 3D Viewport ở chế độ canvas (mục 1.1) |
-| RIGHTBAR (Inspector) | tab phải của N-panel VIEW_3D — `BSCU Inspector` |
+| Phôi | Tên, kích thước mm, Đổi phôi |
+| Vùng trang trí | Toàn phôi/Vùng chọn, Chọn vùng, Xem vùng |
+| Kiểm tra bề mặt | Lỗi/cảnh báo cụ thể, Đến vị trí, hành động khắc phục |
+| Hành động chính | Phân tích & chuẩn bị; sau đó Xem đề xuất chia hoặc Kiểm tra bản trải |
 
-- Khi vào Tab 4, BSCU tự sắp xếp area: vùng canvas chiếm phần lớn, hai tab N-panel bật sẵn; nếu người dùng tự bố trí lại thì BSCU tôn trọng bố cục đó ở các lần vào sau.
+- Caro là **Ô kiểm tra**, chỉ bật được khi có ánh xạ phù hợp. Kích thước ô là kích thước danh nghĩa theo quy đổi; không hứa mọi ô trên phôi đều đúng kích thước đó.
+- **Hiển thị sai lệch** có thang đo, chú giải và giá trị khi chọn; không chỉ phân biệt bằng màu. Nút **Đến vùng sai lệch lớn** thay cho nhấp nháy liên tục.
+- Chuyển tab không tự sửa mesh, tự chạy lại tác vụ nặng hoặc thay bố cục.
+- Trong khi tính: hiện giai đoạn và Hủy; nếu không biết phần trăm thì không dựng tiến độ giả. Kết quả cũ mang nhãn **Chưa cập nhật**; kết quả preview không được ghi là đã kiểm tra.
+
+### 2.3. Chỉ số đo và ý nghĩa
+
+- Đo trên bề mặt evaluated dùng làm nền thiết kế, trước displacement của BSCU để tránh phản hồi vòng. Dữ liệu UV/cage phải có quan hệ hỗ trợ được; không suy đoán correspondence qua modifier thay topology.
+- Tọa độ 3D tính theo mm world-space. Trên tam giác không suy biến, Jacobian từ cơ sở tiếp tuyến trực chuẩn sang UV có singular values $\sigma_1 \ge \sigma_2 > 0$.
+- $\rho_f=\sqrt{A_{uv,f}/A_{3d,f}}$ (UV/mm); $\rho^*=\operatorname{median}(\rho_f)$ là mốc mật độ tương đối, không phải chứng nhận kích thước tuyệt đối.
+- $\delta_f=\rho_f/\rho^*-1$ đo mật độ tương đối; $s_f=\sigma_2/\sigma_1$ đo bất đẳng hướng, không riêng shear. $D_f=\sqrt{\delta_f^2+(1-s_f)^2}$ là điểm tổng hợp **không được gọi là phần trăm sai số chiều dài**.
+- RMS của $D_f$ dùng trọng số diện tích 3D; kèm cực đại và vùng phân bố, không chỉ một số trung bình. Chiều dài/hướng giãn cục bộ đo riêng từ ánh xạ đã quy đổi metric.
+- Mặt suy biến, lật UV và tự chồng lấn được kiểm riêng; median mật độ không phát hiện được lỗi scale đồng đều toàn bộ bản trải.
+- Mục tiêu RMS 3% hoặc cảnh báo 15% trong thiết kế cũ không phải ngưỡng đúng cho mọi hình. Hiển thị chỉ số theo đúng định nghĩa, ngưỡng phải gắn với metric và bộ ca đã hiệu chuẩn trước nghiệm thu.
+
+### 2.4. Chuẩn bị tự động và kiểm tra đầu vào
+
+- Một pipeline dùng chung tạo đề xuất seam, bản trải ứng viên và metric; Tab 1 không có solver độc lập ghi đè Tab 2/3.
+- Phân biệt **lỗi chặn**, **cảnh báo chất lượng** và **điều kiện đầu ra**. Mesh hở có thể là nền thiết kế hợp lệ; không đồng nhất với lỗi không kín của sản phẩm xuất.
+- Mặt suy biến, topology không được hỗ trợ hoặc không xác định được vùng chiếu phải báo vị trí và nguyên nhân. Không tự vá lỗ, apply modifier, remesh hoặc thay kích thước.
+- Auto-Seam ưu tiên ít đường chia và sai lệch thấp; phương án là đề xuất, không lời hứa đạt distortion cố định trên sphere/torus/saddle bất kỳ. Dijkstra trên cạnh là công cụ tìm đường, không tự chứng minh topology đã mở hợp lệ.
+- Đề xuất hợp lệ và không cần chia thêm cho phép đi thẳng tới Tab 3. Không ép người dùng thao tác Tab 2 để hoàn thành một checklist.
+
+### 2.5. Ranh giới trách nhiệm ba tab
+
+| Tab | Trách nhiệm | Không làm |
+| :--- | :--- | :--- |
+| Chuẩn bị phôi | Xác nhận đầu vào, vùng trang trí, tạo đề xuất | Không âm thầm sửa phôi |
+| Chia mảng | Duyệt/sửa seam ứng viên | Không tạo đường khắc hay cắt mesh vật lý |
+| Bản trải | Duyệt ánh xạ, sai lệch và bố cục | Không lẫn packing với unwrap |
+
+Nguồn đã chấp nhận là `BSCU_UV_Active` và tập seam trên mesh. Ứng viên/preview là dữ liệu dẫn xuất tạm, không là nguồn thiết kế thứ hai. Khi đã có hoa văn, quy tắc duyệt thay đổi tại mục 6 áp dụng cho cả ba tab.
+
+### 2.6. Công cụ nâng cao và trách nhiệm triển khai
+
+- Giữ Relax, Pinch, Expand, Grab, Twist, ghim biên, đối xứng, căn trục và thông số solver trong **Nâng cao**; không loại khỏi phạm vi nhưng không bắt dùng trong luồng cơ bản.
+- Cọ dùng F chỉnh cỡ, Shift+F chỉnh lực, Shift tạm Relax khi công cụ đang hoạt động. Sửa ứng viên, không ghi đè ánh xạ đã duyệt khi còn cần xác nhận.
+- Toán metric/relax/seam nằm trong `core/`, không import `bpy` hoặc `mathutils`; cầu nối quản lý đọc/ghi Blender, hàng đợi, context và overlay. Các đường dẫn module cũ là định hướng, không bằng chứng đã triển khai.
+- Solver chốt tại K4 (mục 11): core numpy (LSCM + CG tự viết, không scipy) cho preview; `MINIMUM_STRETCH` của Blender 4.5 cho kết quả chuẩn.
+
+### 2.7. Tiêu chí nghiệm thu Tab 1
+
+- Ca chưa chọn phôi, chưa có UV, có UV sẵn, đơn vị khác nhau và scale không đồng nhất đều hiển thị kích thước/trạng thái đúng; không tự đổi phôi.
+- Chọn mặt mặc định không xuyên sang mặt sau; vùng chọn được lưu và khôi phục.
+- Phân biệt mặt hở được hỗ trợ với lỗi ánh xạ chặn; mọi lỗi có vị trí hoặc nguyên nhân cụ thể.
+- Kiểm metric bằng ca đồng nhất, giãn một trục, scale đồng đều, mặt lật và suy biến; không mặc định giãn U hai lần đồng nghĩa $D_f=100\%$.
+- Hủy không đổi bản đã duyệt; kết quả quá hạn không ghi vào phôi khác. Vật liệu, UV gốc và modifier không bị thay đổi ngoài giao dịch đã xác nhận.
+- Mục tiêu đo trên bộ ca/máy công bố: phản hồi UI liên tục; phân tích 200k tam giác hướng tới dưới 3 giây, cọ 30 fps. Không coi đây là số đo đã đạt.
+
+### 2.8. Quyết định vận hành D1–D4
+
+**D1 — Pipeline chung, revision và ranh giới Blender.**
+- Mọi truy cập `bpy` trên main thread. Tác vụ core nhận snapshot thuần, không nhận đối tượng Blender; cơ chế worker phải kiểm chứng vòng đời/an toàn trên Blender đích, không coi “numpy thuần” là đủ bảo đảm mọi mô hình threading.
+- Mỗi job gắn revision phôi, topology, vùng, seam, ánh xạ, tham số; chỉ áp kết quả còn khớp. Hủy/Undo/đổi phôi vô hiệu hóa kết quả cũ.
+- API unwrap của Blender dù chạy C vẫn được gọi đúng main-thread/context; phải đo khả năng chặn UI, không tuyên bố tự nhiên thành tác vụ nền. Nếu không đáp ứng, chọn solver trên snapshot hoặc phương án tiến trình cách ly trước nghiệm thu.
+
+**D2 — Overlay tạm, khôi phục đúng trạng thái.**
+- Chỉ bật khi có dữ liệu hợp lệ. Không giả định thêm một material slot sẽ tự thay hiển thị mọi mặt.
+- Cơ chế overlay phải giữ nguyên material slot/link/index và trạng thái shading có trước; khôi phục khi tắt overlay, rời ngữ cảnh, đổi mode, lưu file và unregister. Không ép slot OBJECT của người dùng về DATA.
+
+**D3 — Cọ sửa cage được hỗ trợ, đo trên nền evaluated.**
+- Hit-test phải xác định đúng cage và mặt được sửa. Cờ On Cage không được coi là bằng chứng raycast evaluated trả index cage.
+- Nếu không có ánh xạ/cage dùng được, khóa cọ kèm lý do; không ẩn modifier âm thầm. Mọi chế độ xem tạm có nhãn và khôi phục trạng thái cũ.
+- Trong kéo dùng preview cục bộ; sau thao tác đo lại evaluated và đánh dấu trạng thái kiểm tra.
+
+**D4 — Điều hướng và phôi ổn định.**
+- N-panel BSCU là điểm vào bốn bước; mở Studio có chủ đích, không tái chia area khi chuyển tab.
+- Tham số/vùng thuộc bộ thiết kế của phôi. Chọn Curve không đổi phôi đang làm. Tab có thể lưu theo scene, không hứa giữ nguyên khi mở một file khác có scene khác.
+
+---
+
+## 3. TAB 2: CHIA MẢNG
+
+### 3.1. Mục tiêu và luồng
+
+**Xem đề xuất → chỉnh nếu cần → Dùng cách chia này → Kiểm tra bản trải.** Seam chỉ mở ánh xạ, không tạo rãnh hoặc cắt mesh vật lý. Giao diện ghi rõ sự khác biệt này.
+
+- 3D hiển thị đường chia; canvas dùng chung hiển thị mảng ứng viên. Nếu cách chia hiện tại đủ dùng, cho đi tiếp không bắt thêm đường.
+- Đề xuất và seam đã duyệt có kiểu nét/nhãn khác nhau, không chỉ khác màu. Một hành động dùng đề xuất là một giao dịch Undo.
+- Enter xác nhận đường ứng viên, Esc hủy thao tác đang làm; không chiếm Space để tránh xung đột phát animation. Sau chỉnh, **Dùng cách chia này** xác nhận cả bản ứng viên.
+
+### 3.2. Bốn công cụ được giữ, phân tầng giao diện
+
+| Mức | Công cụ | Hành vi |
+| :--- | :--- | :--- |
+| Chính | Đường chia qua điểm | Chọn các điểm trên bề mặt, tìm chuỗi cạnh giữa chúng; preview đúng chuỗi sẽ áp |
+| Chính | Biên vùng chọn | Lấy cạnh có đúng một mặt thuộc tập chọn, gồm cả biên mesh khi phù hợp; không nhầm với `edge.is_boundary` toàn mesh |
+| Hỗ trợ | Chia gần mặt phẳng tham chiếu | Gizmo mặt phẳng gợi ý đường gần nó trên cạnh có sẵn, không hứa giao tuyến chính xác |
+| Hỗ trợ | Viền theo hướng nhìn | Đề xuất cạnh contour rồi kiểm tra hiển thị, liên tục và topology |
+
+- Chọn điểm không tự xuyên qua mặt sau; công cụ xóa seam có preview. Đường ngắn nhất trên đồ thị cạnh không được gọi là geodesic chính xác trên bề mặt liên tục.
+- Tích dấu normal với hướng nhìn chỉ tạo tập contour ứng viên, không đủ lọc phần bị che khuất hay đảm bảo viền ngoài đúng trong hốc lõm.
+- Mặt phẳng tham chiếu hiển thị độ lệch đường thực tế với mặt phẳng; nếu lưới quá thô, báo giới hạn. Không tự subdivide/bisect để làm preview đẹp hơn.
+
+### 3.3. Validator và phục hồi
+
+- Kiểm tra topology **sau mở seam**, có tính các bản sao đỉnh/cạnh trên biên cắt; không chỉ lấy $V-E+F$ từ tập mặt nguyên gốc.
+- Dạng đĩa cần thành phần liên thông, manifold phù hợp, orientable, một vòng biên và Euler phù hợp. $\chi=1$ riêng lẻ không đủ chứng minh trên mesh lỗi.
+- Đầu seam bậc 1 là vị trí cần phân tích, **không mặc định lỗi**. Đường mở một mặt kín có thể có đầu mút hợp lệ; không ép số đầu cụt bằng 0.
+- Đỉnh cong lớn không nằm trên seam không tự là lỗi topology. Đánh giá bản trải, độ méo và khả năng solver hỗ trợ.
+- Phát hiện mặt lật, suy biến và giao phần trong tam giác UV; cạnh/đỉnh chung hợp lệ không tính thành overlap.
+- Cảnh báo luôn kèm **Đến vị trí**, lý do và đề xuất nối/đổi đường; không tự nối seam hoặc yêu cầu đóng mọi đường thành vòng.
+
+### 3.4. Preview và cache dùng chung
+
+- Hai tầng: preview nhẹ khi thao tác và kiểm tra đầy đủ khi hoàn tất. Mục tiêu preview khoảng 10 Hz; nếu chưa xong giữ hình cũ có nhãn, không khóa tương tác và không ghi số cũ thành kết quả mới.
+- Tái tính phần bị ảnh hưởng; kiểm overlap giữa phần đổi và phần giữ lại, không chỉ trong island vừa đổi. Packing cần kiểm tra toàn bộ bố cục cuối.
+- Khóa cache gồm revision hình học/topology/transform/vùng/seam/UV và tham số solver; **không chỉ hash tập seam** vì mặt có thể đổi hình mà seam không đổi.
+- Quy tắc job, hủy và áp kết quả tại D1. Đổi nhanh liên tiếp chỉ áp revision mới nhất phù hợp.
+
+### 3.5. Hiển thị và hỗ trợ
+
+- Đường đủ dày theo pixel; phần khuất có chế độ hiển thị riêng, không giả đường xuyên mặt là ở mặt trước.
+- **Ẩn mảng / Hiện tất cả** chỉ phục vụ quan sát, không xóa khỏi vùng thiết kế. Hủy công cụ khôi phục trạng thái tạm.
+- Giữ góc nhìn khi chọn mảng; **Đến mảng** là hành động riêng, không tự zoom làm người dùng mất vị trí mỗi click.
+
+### 3.6. Trách nhiệm triển khai
+
+`core/uv_islands.py`, `core/seam_graph.py`, bộ kiểm metric và bộ solver chung xử lý dữ liệu thuần; operator chuyên biệt cho từng công cụ; overlay/canvas chỉ hiển thị dữ liệu. Không tạo pipeline unwrap thứ hai riêng cho Tab 2.
+
+### 3.7. Tiêu chí nghiệm thu Tab 2
+
+- Giữ đủ bốn công cụ; preview chuỗi cạnh đúng kết quả áp, mesh topology không đổi.
+- Bộ ca gồm mặt đĩa, mặt có lỗ, sphere mở, torus, mesh lỗi và seam có đầu mút hợp lệ; không báo lỗi chỉ vì bậc đỉnh bằng 1.
+- Hủy/Undo khôi phục cả seam và ánh xạ liên quan; chỉnh sau khi có hoa văn tuân thủ giao dịch mục 6.
+- Thay hình học nhưng giữ seam làm cache hết hạn; đổi một island vẫn phát hiện overlap với island chưa đổi.
+- Mục tiêu trên bộ ca 200k tam giác công bố: preview 10 Hz, kết quả chuẩn hướng tới 2 giây. Quá thời gian phải còn thao tác/hủy được; kiểm chứng trên UI thật.
+
+### 3.8. Quyết định vận hành D5–D7
+
+**D5:** chia gần mặt phẳng trên cạnh có sẵn, không cắt topology; độ lệch được báo, không gọi là Bisect chính xác.
+
+**D6:** Tab 2 dùng canvas mục 1.1; mở Studio có chủ đích, không tự bố trí lại area khi chuyển tab.
+
+**D7:** cache chỉ là dữ liệu RAM dẫn xuất, khóa theo mục 3.4. Nhận diện mảng dựa vào tập mặt nguồn khi topology còn tương ứng; topology đổi không rõ ánh xạ phải yêu cầu xử lý, không coi face index là ID bền vững tuyệt đối.
+
+---
+
+## 4. TAB 3: BẢN TRẢI
+
+### 4.1. Mục tiêu và luồng
+
+Người dùng biết **vẽ ở mảng nào, hướng nào, sai lệch ở đâu** trước khi tạo phù điêu. Đây không phải bảng chọn thuật toán thứ hai.
+
+**Chọn mảng → Xem sai lệch → Bố trí/đặt tên → Bắt đầu tạo phù điêu.**
+
+### 4.2. Giao diện và chọn đồng bộ
+
+- Canvas 2D và preview 3D đồng thời; danh sách mảng có tên, kích thước bản trải theo mm và trạng thái kiểm tra.
+- Chọn 2D highlight mảng 3D và ngược lại, không tự zoom. Nút **Đến mảng** căn khung khi yêu cầu.
+- Thao tác chính: di chuyển bố cục, xoay, đặt tên, kiểm tra sai lệch. Solver/vòng lặp đặt trong Nâng cao.
+- Không có UV hợp lệ thì hiện hành động quay về kiểm tra/chia mảng, không mở canvas trống không giải thích.
+
+### 4.3. Xếp bố cục khác với trải lại
+
+| Hành động | Tác động | An toàn với thiết kế |
+| :--- | :--- | :--- |
+| Xếp lại bố cục | Xoay/tịnh tiến khung island | Không đổi hình chiếu hoa văn trên phôi |
+| Trải lại bề mặt | Thay ánh xạ trong island | Có thể đổi hình chiếu; preview trước khi áp nếu đã có hoa văn |
+
+- Một pipeline chung unwrap/refine/metric phục vụ cả ba tab. Không gộp hai hành động thành nút Tối ưu không rõ nghĩa.
+- Ưu tiên tái sử dụng solver Blender khi phù hợp; core refine là bước có điều kiện, không mặc định solver riêng luôn tốt hơn. Mọi lệnh bpy tuân D1.
+- Refine không được làm tăng lỗi lật/suy biến/overlap; rollback về ứng viên hợp lệ trước đó. Nếu không có ứng viên hợp lệ, báo Cần sửa, không gọi rollback là thành công.
+- Có giới hạn thời gian/vòng lặp và hủy; không hứa giảm dưới 3% với mọi bề mặt. Đo lại kết quả sau tất cả bước làm thay đổi ánh xạ.
+
+### 4.4. Kích thước, metric và packing
+
+- Tách **kích thước thiết kế trên canvas** và **kích thước sau chiếu**. Chuẩn hóa mật độ giữa các mảng không tạo phép trải đẳng cự cho mặt cong.
+- Packing chỉ xoay/tịnh tiến; không tự scale mảng để vừa khổ. Hiệu chuẩn metric là bước riêng của bản trải ứng viên, không thay đổi ngầm khi xếp lại.
+- Khoảng cách giữa mảng tính bằng mm canvas, không gọi là khoảng hở dao trên sản phẩm. Khổ canvas tùy chọn chỉ là giới hạn bố cục, không là kích thước bàn máy mặc định.
+- Xoay bản trải để dễ vẽ không tự thay hướng thớ vật liệu hoặc hướng chạy dao. Muốn đổi hướng hoa văn trên phôi là thao tác thiết kế riêng.
+- Công cụ đo đường sau chiếu tính chiều dài dọc bề mặt từ ánh xạ, không lấy khoảng cách dây cung hai đầu. Hiển thị cả số 2D, số 3D và sai lệch; đánh dấu phép đo không xác định khi đường đi qua phần ánh xạ lỗi.
+
+### 4.5. Trạng thái kiểm tra và đồng bộ
+
+| Trạng thái | Ý nghĩa | Hành động |
+| :--- | :--- | :--- |
+| Có thể thiết kế | Ánh xạ hợp lệ, kiểm tra cập nhật | Cho sang Tab 4 |
+| Có cảnh báo | Ánh xạ dùng được nhưng còn sai lệch đáng chú ý | Cho tiếp tục kèm vị trí/lý do cảnh báo |
+| Cần sửa | Ánh xạ mơ hồ, mặt lật/suy biến/overlap trong miền chiếu | Chặn dùng bản ứng viên lỗi, chỉ đường sửa |
+
+- Chưa kiểm tra/đang tính là trạng thái riêng, không hiển thị Có thể thiết kế. Bản hợp lệ cũ vẫn có thể được giữ khi bỏ ứng viên lỗi.
+- Trạng thái chỉ nói về bản trải, không chứng nhận an toàn gia công. Khổ vượt chỉ cảnh báo bố cục, không tự trở thành lỗi hình học.
+- Cache/identity theo D7; quy tắc giữ hoa văn, preview và xác nhận theo mục 6. Chuyển tab không tự áp ứng viên.
+
+### 4.6. Trách nhiệm triển khai
+
+Cầu nối `uv_bridge` quản lý context và áp ứng viên; solver/refine/metric dùng chung; dữ liệu bố cục tách khỏi tọa độ thiết kế local. Lựa chọn song hướng canvas/3D đọc cùng ánh xạ island–mặt nguồn, không lưu hai bản selection thiết kế độc lập.
+
+### 4.7. Tiêu chí nghiệm thu Tab 3
+
+- Xếp lại/xoay mảng không đổi điểm chiếu và kích thước hoa văn trên phôi trong dung sai số công bố; đổi khổ không tự scale.
+- Trải lại sau khi có hoa văn giữ bản đang dùng tới lúc duyệt; hủy/Undo khôi phục nhất quán seam, UV và liên kết.
+- Ca mặt phẳng và mặt cong biết trước xác minh đo dọc bề mặt khác dây cung; RMS thấp không che lỗi cục bộ.
+- Ba trạng thái tại mục 4.5 cùng trạng thái đang tính/chưa kiểm tra xuất hiện đúng; không cho dùng ứng viên có overlap/lật tại miền chiếu.
+- Chọn hai chiều, Đến mảng, mở lại file và giữ bố cục Studio được kiểm trên Blender thật.
+
+### 4.8. Quyết định vận hành D8–D9
+
+**D8 — Chuẩn hóa và đo trên kết quả cuối.** Chuẩn hóa mật độ metric là bước của ứng viên unwrap; có thể dùng `average_islands_scale()` nếu đáp ứng hợp đồng. Đo lại sau refine/chuẩn hóa/packing; không coi tên một API là bằng chứng tỷ lệ đúng. Không tự chạy bước rescale này khi chỉ xếp lại bố cục đã duyệt.
+
+**D9 — Khổ canvas không tự thu nhỏ.** Vượt khổ thì báo kích thước thực tế và cho xếp lại/đổi khổ. Giữ kích thước thiết kế, không hứa kích thước 2D bằng mọi khoảng cách trên phôi cong.
+
+---
+
+## 5. TAB 4: TẠO PHÙ ĐIÊU — ĐƯỜNG, MẢNG VÀ LƯỚI NẮN KHỐI
+
+### 5.1. Luồng sử dụng và bố cục Studio
+
+Luồng chính: **Vẽ nét → tạo rãnh/gờ trực tiếp hoặc dùng làm biên mảng → tạo dáng mảng → thêm đường điều khiển → nắn qua nút giao và biểu đồ bên phải.**
+
+- Canvas 2D là nơi vẽ/chọn; khung xem trước 3D luôn có thể quan sát đồng thời.
+- Cột chức năng bên phải Studio (gọi tắt **Inspector**, U2 mục 12) chứa danh sách lớp, thuộc tính và biểu đồ; nội dung ẩn/hiện theo công cụ và đối tượng đang chọn.
+- Chọn mảng mặc định chỉ hiện Nổi/Lõm, Chiều cao/Độ sâu, Dáng khối và Chuyển tiếp ở mép. Biểu đồ nâng cao mở qua **Sửa dáng khối**; lưới chỉ hiện khi bật **Nắn khối**.
+- Mở Studio bằng hành động rõ ràng; không tự chia lại màn hình mỗi lần chuyển bước. Tôn trọng bố cục người dùng đã chỉnh.
+- Quyết định bố trí biểu đồ nằm tại D11–D12, mục 5.10; không dùng HUD nổi che bản vẽ.
+
+### 5.2. Đối tượng, vai trò đường và lớp tổ chức
+
+| Vai trò | Tác dụng | Quy tắc |
+| :--- | :--- | :--- |
+| Đường tạo hình | Tạo rãnh hoặc gờ, rộng/hẹp và sâu/cao biến thiên dọc đường | Hiệu ứng phải được bật chủ động |
+| Đường bao | Giới hạn mảng kín cùng những đường khác | Có thể đồng thời mang hiệu ứng tạo hình |
+| Đường điều khiển mảng | Nắn cao độ và độ dốc của mảng | Không tự tạo rãnh, không tự chia mảng |
+
+- Muốn dùng đường điều khiển để chia vùng phải chọn **Dùng làm đường chia mảng**; các ô của lưới nắn không tự thành vùng tạo khối.
+- Layer chứa hệ đường/mảng riêng; folder gom các layer và folder con thành một hệ tạo hình. Quy tắc nền và thứ tự tính nằm tại mục 5.11.
+- Nhóm/lớp hỗ trợ ẩn hướng dẫn, khóa, thêm và đổi thứ tự; thứ tự đánh giá được lưu tường minh, không suy ra từ thứ tự Collection của Blender.
+- Lớp phủ màu/vật liệu không thay đổi cao độ, đặc tả tại mục 10. Ẩn hướng dẫn, xem riêng và tắt hiệu ứng là các hành động khác nhau (mục 5.11).
+
+### 5.3. Canvas, chọn và công cụ vẽ
+
+- Pan bằng MMB; zoom tại con trỏ bằng wheel. Click gần biên chọn đường, click trong vùng chọn mảng; khoảng bắt chọn theo pixel màn hình.
+- Chỉ hiện điểm neo khi **Sửa nét**, chỉ hiện nút nắn khi **Nắn khối**. Đối tượng chồng nhau chọn qua menu **Chọn đối tượng tại đây**, có highlight xem trước.
+- Snap dùng chung: Endpoint, Midpoint, On-Curve, Intersection, lưới và trục. Ký hiệu và nhãn phân biệt được, không chỉ dựa vào màu.
+- Công cụ chính: chọn/di chuyển/xoay/đổi kích thước; đường liên tục, Bezier, chữ nhật, tròn/elip; sửa điểm, nối đầu nét, Trim, Fillet; tạo nổi/lõm và khắc theo nét.
+- Arc ba điểm, Chamfer và Extend nằm trong nhóm mở rộng, không loại khỏi phạm vi.
+- Nhập chiều dài, góc, bán kính có đơn vị; giá trị đã nhập được khóa và biểu thị rõ.
+- Một lần kéo hoặc một đoạn vẽ đã xác nhận là một bước Undo. Với đường liên tục, Enter kết thúc; Esc bỏ đoạn preview và thoát, giữ các đoạn đã xác nhận. Với thao tác chỉnh chưa xác nhận, Esc khôi phục trạng thái trước thao tác.
+- Trong canvas nhìn từ trên xuống, di chuyển XY và nâng/hạ phải là hai thao tác phân biệt; chỉnh cao độ qua công cụ chuyên dụng, biểu đồ hoặc ô số.
+
+### 5.4. Inspector và biểu đồ theo lựa chọn
+
+| Đối tượng chọn | Thuộc tính và biểu đồ bên phải |
+| :--- | :--- |
+| Đường tạo hình | Rãnh/Gờ; tiết diện; biểu đồ rộng, sâu/cao và nghiêng dọc đường; chế độ Tự do/Theo dao (mục 5.12) |
+| Mảng | Dáng nền Phẳng/Vòm/Chóp/Tùy chỉnh; cao độ; chuyển tiếp biên; cách kết hợp |
+| Đường điều khiển mảng | Biểu đồ cao độ dọc đường và điều khiển độ dốc |
+| Nút giao | Cao độ chung, độ dốc theo từng hướng đường, chuyển tiếp Mượt/Gãy |
+
+**Biểu đồ dọc đường:** trục ngang là vị trí đầu → cuối; kênh bề rộng và độ sâu/chiều cao có nhãn và đơn vị riêng. Điểm neo hình học có thể mang thuộc tính; được thêm điểm thuộc tính ở vị trí khác dọc đường mà không thêm điểm làm đổi hình học.
+
+**Biểu đồ tiết diện:** hiển thị mặt cắt ngang tại vị trí đang chọn; không đánh đồng với biểu đồ độ sâu dọc đường. Chọn điểm trong biểu đồ hoặc trên canvas đều highlight vị trí tương ứng ở phía còn lại.
+
+- Ràng buộc giữa rộng/sâu/góc và cách thao tác tiết diện được định nghĩa tại mục 5.12.
+- Nổi/Lõm dùng số độ lớn dương, chế độ xác định hướng; tách khỏi cách kết hợp hiệu ứng.
+- **Cộng trên nền** là mặc định của hệ layer; **Bao ngoài** và **Thay thế** là lựa chọn nâng cao. Quy tắc nền tại mục 5.11 thay thế mặc định Bao ngoài của v1.2.0.
+- Rãnh tính độ sâu tương đối từ bề mặt kết quả bên dưới, không từ phôi chưa tạo hình; hệ đo được quy định tại mục 5.12.
+
+### 5.5. Dữ liệu nguồn và lưu trữ
+
+| Thành phần | Nguồn sở hữu |
+| :--- | :--- |
+| Nét hình học, đường bao, đường điều khiển | Kho thiết kế BSCU (K1, mục 11): Mesh dữ liệu ẩn + PropertyGroup; vai trò và liên kết mảng là metadata. Curve Object chỉ sinh ra để xem/xuất, không là nguồn |
+| Vùng nhận diện | Hình học dẫn xuất từ đường bao, liên kết bằng ID nguồn ổn định |
+| Hiệu ứng vùng | Dữ liệu bền vững gắn với định danh vùng; không mất khi đường bao tạm hở |
+| Điểm thuộc tính dọc đường | Metadata trên đường, tách khỏi điểm neo hình học khi cần |
+| Nút giao lưới nắn | Dữ liệu do mảng sở hữu; các đường tham chiếu cùng ID nút, không lưu cao độ trùng lặp |
+| Nhóm/lớp và thứ tự hiệu ứng | Cây folder/layer có ID, parent và thứ tự tường minh; Collection tổ chức đối tượng, không là nguồn thứ tự tính ngầm |
+| Biểu đồ, highlight, snap | Biểu diễn/thao tác trên dữ liệu nguồn; không là bản sao trạng thái thiết kế |
+
+- Local Canvas Space giữ nét 2D ổn định khi packing chỉ xoay/tịnh tiến island; không bảo đảm giữ mọi khoảng cách trên bề mặt cong khi unwrap thay đổi.
+- Lưu/mở `.blend` phải giữ vai trò đường, điểm thuộc tính, hiệu ứng, nút giao chung và liên kết phôi–mảng–hoa văn.
+
+### 5.6. Nhận diện vùng và sửa đường bao
+
+- Khép kín đường chỉ tạo **vùng có thể chọn**, chưa tự sinh khối. Người dùng chọn vùng rồi dùng **Tạo nổi/Tạo lõm**.
+- Kéo biên mà vẫn xác định được cùng một vùng: tái tạo vùng dẫn xuất, giữ hiệu ứng và thông số.
+- Đường bao hở: tạm ngừng tính hiệu ứng vùng; giữ cấu hình, đánh dấu đầu hở và cung cấp **Đến chỗ hở / Chọn hai đầu nét**. Hình cũ nếu hiển thị phải ghi rõ là kết quả cũ.
+- Tách vùng: preview các vùng mới và phương án kế thừa; không nhân đôi hiệu ứng chồng lên nhau một cách âm thầm.
+- Nhập vùng có cấu hình khác nhau: yêu cầu chọn cách giữ hiệu ứng, không tự chọn theo thứ tự ngẫu nhiên.
+- Không coi `source_edges` là đủ để giải quyết mọi trường hợp tách/nhập; chỉ tự tái sử dụng ID khi xác định tương ứng không mơ hồ.
+- Mỗi thay đổi người dùng cùng cập nhật dẫn xuất thuộc một giao dịch Undo; kết quả tính cũ không được ghi đè thao tác mới hoặc Undo.
+- Không tự nối khe hở, cắt nét tại biên hay xóa nét ngoài mảng; đưa đề xuất sửa có preview.
+
+### 5.7. Lưới nắn khối và đường điều khiển
+
+- **Lưới nắn khối không phải UV của phôi.** Đây là các đường điều khiển bề mặt bên trong một mảng thiết kế.
+- Bật Nắn khối tạo lưới thưa có thể chỉnh hướng/mật độ; có thể tự vẽ một đường dọc và nhiều đường ngang. Không bắt mọi vùng phải có lưới chữ nhật toàn phần.
+- Đường điều khiển bị giới hạn bởi miền mảng, không nối xuyên qua lỗ hoặc khoảng ngoài mảng; việc giới hạn tác động không được phá hủy nét nguồn.
+- Hai đường điều khiển giao nhau trong cùng mảng dùng chung một nút cao độ. Chỉnh từ đường nào cũng cập nhật nút đó và các đường liên quan.
+- Hai đường khắc độc lập giao nhau không tự tạo nút điều khiển chung.
+- Nút mặc định có cao độ và Mượt/Gãy; nâng cao có độ dốc theo hướng từng đường đi qua nút. Độ dốc không phải một số vô hướng không xác định phương.
+- Nút mặc định lưu mức điều chỉnh so với dáng nền; khóa cao độ tuyệt đối là lựa chọn nâng cao. Đổi chiều cao nền giữ ý đồ nắn tương đối.
+- Thứ tự đánh giá: **Dáng nền mảng → Lưới nắn → Rãnh/gờ bám mảng**. Các đường chi tiết đi theo bề mặt sau nắn.
+- Nắn mặc định lan mượt cục bộ; hiển thị phạm vi ảnh hưởng theo mm. Không thay cao độ các nút đã cố định để đạt độ mượt; nếu ràng buộc không thỏa phải báo rõ.
+- Mặc định giữ biên của dáng nền khi nắn bên trong, không ép biên về cao độ 0. Chọn biên để chủ động sửa cao độ hoặc chuyển tiếp.
+- Mảng chung biên không tự hàn: **Nối mượt** cần cùng cao độ và độ dốc tương thích; **Nối có nếp** cùng cao độ nhưng cho phép độ dốc khác. Mảng chồng nhau vẫn là hiệu ứng riêng.
+- Nút mặc định Mượt tự động; tay nắm biểu đồ chỉnh dốc, ô số dành cho độ chính xác. Các hướng dốc tại nút mượt phải tương thích với một bề mặt; không âm thầm bỏ qua ràng buộc xung đột.
+- Thêm đường/nút lấy giá trị từ bề mặt hiện tại, giữ dáng trong dung sai phải công bố và kiểm chứng trước nghiệm thu. Xóa điều khiển có preview và Undo vì có thể đổi dáng. Ẩn lưới không xóa ràng buộc.
+- Thuật toán nội suy và dung sai giữ dáng cần được xác định/đo khi thiết kế solver; các quy tắc UX không được coi là bằng chứng solver đã khả thi.
+
+### 5.8. Ranh giới trách nhiệm triển khai
+
+- `core/planar_graph.py`: nhận diện vùng từ đường bao, không đưa đường điều khiển vào đồ thị chia vùng mặc định.
+- `core/profile_curves.py`: kênh thuộc tính dọc đường, tiết diện và nội suy profile.
+- `core/height_field.py`: kết hợp dáng nền, nắn và hiệu ứng chi tiết; không import `bpy`.
+- `bridge/design_store.py` cùng `properties/`: đọc/ghi kho thiết kế K1 (nét, ID, kênh, nút chung, liên kết); mảng sở hữu nút chung, đường chỉ tham chiếu ID.
+- Các operator vẽ, sửa CAD và nắn chỉ xử lý tương tác; canvas và Inspector dùng chung dữ liệu, không tự sở hữu bản thiết kế riêng.
+- `nodes/relief_displace.py`: đọc ảnh cao độ preview theo UV, đẩy theo normal (D10). Danh sách module đầy đủ tại K6, mục 11; không xác nhận module đã tồn tại.
+
+### 5.9. Tiêu chí nghiệm thu Tab 4
+
+- Đường dùng độc lập được; một đường vừa làm biên vừa có hiệu ứng chỉ khi bật chủ động.
+- Thêm điểm độ sâu không đổi hình dạng đường; các giá trị tại điểm điều khiển và tiết diện tương ứng được kiểm tra bằng ca có kết quả biết trước.
+- Vùng kín chưa gán hiệu ứng không làm đổi phôi; sửa biên không mơ hồ giữ cấu hình; tách/nhập/hở tuân theo mục 5.6.
+- Hai đường điều khiển chia sẻ đúng cao độ tại nút giao; đường khắc giao nhau không bị liên kết nhầm.
+- Biểu đồ ↔ canvas chọn đồng bộ; thay đổi XY không vô tình đổi cao độ.
+- Rãnh bám theo bề mặt sau nắn; đổi chiều cao nền giữ điều chỉnh tương đối của nút.
+- Undo/Redo và lưu/mở file giữ nguyên liên kết, hiệu ứng và thứ tự đánh giá.
+- Layer trên cập nhật khi nền dưới đổi; ca chuẩn nền 4 mm + thân 3 mm = 7 mm, đổi nền thành 6 mm cho kết quả 9 mm, không cộng nền hai lần.
+- Gom/bỏ nhóm các layer liên tiếp không có thiết lập nhóm riêng giữ nguyên kết quả; đổi thứ tự, tắt hiệu ứng và Undo tính lại đúng phần phụ thuộc.
+- Đường khác layer không tự sinh vùng chung; lưu/mở giữ cây folder và thứ tự tính.
+- Nắn giữ biên và nút khóa; thêm điều khiển giữ dáng theo dung sai công bố, không chỉ kiểm tra hình thức số nút tăng.
+- Rãnh V không nghiêng tuân theo công thức mục 5.12; đảo chiều đường giữ hình rãnh, đổi chế độ không giữ nhãn preset sai, cấu hình undercut bị báo rõ.
+- Mục tiêu hiệu năng: phản hồi biểu đồ 60 fps, preview tham số đơn lẻ ≤100 ms, cập nhật vùng đơn giản ≤50 ms. Phải ghi cấu hình máy, độ phức tạp ca đo và phân biệt preview với kết quả chuẩn; chưa coi các con số là kết quả đã đạt.
+
+### 5.10. Quyết định vận hành
+
+**D10 — Một hàm cao độ, hai tầng thực thi (thay D10 v1.4.0).**
+- `core/height_field.py` cung cấp duy nhất `evaluate(points_canvas_mm) → height_mm`; preview và xuất cùng gọi hàm này, không có công thức thứ hai.
+- **Preview:** lấy mẫu `evaluate` trên lưới đều theo mm canvas từng mảng (bước mặc định 0.25 mm, chỉnh được), ghi ảnh float theo `BSCU_UV_Active` có padding qua seam; GN trên lưới phôi thưa đọc ảnh bằng UV và đẩy theo pháp tuyến. Luôn gắn nhãn **Xem trước**.
+- **Xuất:** chia lưới thích nghi vùng trang trí, gọi `evaluate` trực tiếp tại từng đỉnh (không qua ảnh), chia tiếp tới khi sai số dây cung < dung sai (mặc định 0.05 mm) hoặc chạm giới hạn tam giác; chạm giới hạn thì báo `X704`, không âm thầm hạ chính xác.
+- Lý do: độ nét chi tiết tách khỏi mật độ lưới phôi; preview nhanh, xuất chính xác. Nghiệm thu tầng xuất bằng lấy mẫu ngẫu nhiên so mặt xuất với `evaluate` (sai số max/RMS).
+
+**D11 — Biểu đồ nằm trong cột chức năng bên phải Studio.**
+- Thay thế thiết kế HUD biểu đồ nổi trong canvas. Cột chức năng và canvas cùng sửa dữ liệu nguồn.
+- Biểu đồ là vùng vẽ GPU nhận chuột riêng, xuất hiện theo lựa chọn (U2, mục 12). Không giả định panel chuẩn có widget biểu đồ tùy biến; gate U2 phải PASS trước UX-9b.
+
+**D12 — Studio 3 cột có quản lý, nhúng được vào layout Blender.**
+- Workspace `BSCU Studio` là preset 3 cột tạo một lần; các lần sau chỉ chuyển sang, không tái chia area. Bố trí và cách nhúng tại U2, mục 12.
+- Không giả lập hai sidebar bằng category N-panel; người dùng chỉnh bố cục thì giữ nguyên.
+
+### 5.11. Folder lồng nhau và cao độ cộng dồn
+
+**Quyết định:** cây layer thay thế mô hình chọn liên kết nền thủ công cho từng layer. Trong mỗi folder, tính từ dưới lên; phần tử phía trên nhận kết quả phía dưới làm nền. Folder con nhận nền tại vị trí của nó trong folder cha, xử lý các phần tử bên trong rồi trả kết quả.
+
+```text
+Hoa và cánh cam/             (hiển thị từ trên xuống)
+├─ Cánh cam/
+│  ├─ Chấm trên mai
+│  ├─ Rãnh chia mai
+│  └─ Thân vòm
+├─ Gân cánh hoa
+└─ Khối cánh hoa             (tính trước)
+```
+
+- Layer đầu tiên nhận nền của folder; folder gốc nhận phôi. Bề mặt cao độ dùng chung hệ tham chiếu của phôi, không đổi pháp tuyến riêng theo từng layer.
+- Nổi cộng phần cao thêm, lõm khoét từ nền nhận vào; folder trả bề mặt đã xử lý, **không cộng lại nền vào kết quả**. Ngoài phạm vi hiệu ứng, giữ nguyên bề mặt đầu vào.
+- Ví dụ tại một điểm: cánh hoa 4 mm → thân thêm 3 mm = 7 mm → rãnh sâu 0.5 mm = 6.5 mm → chấm thêm 0.2 mm = 6.7 mm.
+- Thay đổi phía dưới cập nhật phần phụ thuộc phía trên, giữ nét nguồn và tham số tương đối. Đây là **bám nền**, không phải đặt một vật thể cứng giữ hình trong không gian.
+- Vòm/chỏm cầu thuộc phạm vi trường cao độ 2.5D; quả cầu đầy đủ có mặt dưới hoặc undercut không được bảo đảm bởi mô hình này.
+- Mỗi layer nhận diện vùng từ hệ đường của mình. Tương tác cao độ không tự nhập đồ thị đường giữa layer; snap sang layer khác không tạo liên kết. Dùng biên tham chiếu từ layer khác phải là thao tác chủ động.
+- Bao ngoài/Thay thế là chế độ hiệu ứng nâng cao, không thay đổi chiều đánh giá của cây. Tham chiếu hình học không được tạo vòng phụ thuộc.
+- Gom các phần tử liên tiếp vào folder hoặc bỏ folder, giữ thứ tự và không có thiết lập nhóm riêng, phải giữ kết quả. Gom các phần tử không liên tiếp, chuyển folder/layer hoặc đổi thứ tự có thể đổi nền: phải preview và Undo nguyên thao tác.
+- **Ẩn hướng dẫn:** chỉ giấu nét/lưới. **Xem riêng:** vẫn tính đủ nền phụ thuộc. **Tắt hiệu ứng:** bỏ tác động của phần tử, tính lại các phần tử phía trên và chỉ rõ ảnh hưởng. Folder tắt hiệu ứng truyền nguyên nền đầu vào.
+- Inspector hiển thị nền là **Kết quả các lớp phía dưới trong [tên folder]**, không yêu cầu chọn nền cho từng layer. Đổi tên không ảnh hưởng cấu trúc; xóa layer/folder có preview ảnh hưởng lên các phần tử phía trên và Undo.
+
+### 5.12. Khắc theo đường: tiết diện, kích thước và nghiêng
+
+**Đường là đường dẫn; tiết diện dao ảo quyết định dáng rãnh.** Mặc định tạo hình tự do, chưa phải mô phỏng CAM hoặc chứng nhận máy có thể gia công.
+
+| Nhóm điều khiển | Nội dung |
+| :--- | :--- |
+| Tiết diện | V 90°, V 30°, đáy phẳng, tròn/U, tùy chỉnh; không dùng tên “dao vuông” mơ hồ |
+| Kích thước | Rộng miệng, sâu, rộng đáy/bán kính đáy khi phù hợp |
+| Nghiêng ngang | Âm sang trái, dương sang phải theo chiều đường; 0° không nghiêng |
+| Dọc đường | Kênh rộng, sâu, nghiêng và thông số tiết diện hợp lệ theo chế độ |
+| Đầu/cuối | Tròn theo dao (mặc định), Cắt phẳng, Thu nhỏ dần trên đoạn L mm (mục 5.13) |
+
+**Biểu đồ tiết diện:** mặt cắt vuông góc đường tại vị trí chọn; thể hiện bề mặt nền, miệng, đáy và trục dao ảo. Kéo mép đổi rộng, kéo đáy đổi sâu, tay nắm chỉnh nghiêng; ô số có đơn vị. Canvas và biểu đồ đồng bộ vị trí chọn.
+
+**Tạo hình tự do — mặc định:** rộng/sâu/dáng chỉnh theo ý đồ. Preset là điểm khởi đầu; đổi hình khác preset phải chuyển nhãn thành Tùy chỉnh. Không khẳng định kết quả tương ứng một dao cố định.
+
+**Theo dao:** khóa hình dạng/kích thước dao; đại lượng phụ thuộc được tính lại, không nhận bộ thông số mâu thuẫn. Với V đầu nhọn đối xứng, không nghiêng, mặt nền phẳng vuông góc trục dao:
+
+$$w = 2d\tan(\alpha/2)$$
+
+Ở độ sâu 2 mm, V 90° có miệng 4 mm; V 30° khoảng 1.07 mm. Công thức không được áp nguyên dạng cho dao nghiêng, dao đầu tù hoặc nền cong.
+
+- Mặc định giữ đường vẽ ở tâm miệng rãnh; nghiêng làm đáy lệch bên. Chế độ Theo dao phải tính lại vị trí dao để thỏa cách neo, không chỉ xoay hình minh họa.
+- Kênh thuộc tính có thể gắn điểm neo hoặc điểm độc lập dọc đường. Ví dụ Tự do: đầu rộng 0.5/sâu 0.2 mm/nghiêng 0° → giữa rộng 3/sâu 1.5 mm/nghiêng 20° trái → cuối trở về thông số đầu.
+- Chiều đường được hiển thị khi chỉnh nghiêng. Đảo chiều phải đảo vị trí kênh và dấu nghiêng phù hợp để giữ hình rãnh, không tự lật rãnh.
+- Độ sâu mặc định đo trong hệ cao độ chung theo pháp tuyến phôi tham chiếu, tương đối với bề mặt nền nhận từ cây layer. Không đánh đồng với khoảng cách theo pháp tuyến bề mặt đã nắn.
+- Nghiêng trước/sau theo tiếp tuyến (β) là kênh dọc đường đầy đủ, thực hiện bằng quét dao ảo tại mục 5.13; không mô tả bằng một mặt cắt 2D.
+- Rãnh có undercut so với pháp tuyến tham chiếu, nhiều cao độ tại một vị trí 2D hoặc cấu hình không biểu diễn được phải báo rõ; không âm thầm clamp/thay hình nhưng giữ số đã nhập.
+
+### 5.13. Quét dao ảo, góc nối và giao rãnh
+
+**Mô hình:** tại mỗi vị trí $s$ dọc đường có một dao ảo; hình dạng lấy từ tiết diện hiện tại (V/đáy phẳng/U/tùy chỉnh, rộng, sâu), trục dao nghiêng theo hai kênh: **nghiêng ngang** $\gamma(s)$ (âm trái, dương phải) và **nghiêng dọc** $\beta(s)$ (dương nghiêng về phía trước theo chiều đường). Mặt rãnh là **bao dưới của quét dao ảo** dọc đường (gờ: bao trên). Một mô hình xử lý chung nghiêng dọc, góc gãy và đầu/cuối.
+
+- Chế độ **Tự do** dựng dao ảo từ tiết diện đã chỉnh; **Theo dao** khóa hình dao (mục 5.12).
+- **Undercut:** không điểm nào trên thành dao nghiêng được vượt quá pháp tuyến tham chiếu. Với V góc $\alpha$, tổng nghiêng $\theta=\arccos(\cos\beta\cos\gamma)$ phải thỏa $\theta \le \alpha/2$ (V 90° ≤ 45°, V 30° ≤ 15°). Dao thành trụ (đáy phẳng, U) nghiêng mà thành ngập vật liệu thì báo `R402`. Vi phạm: báo, giữ số, không clamp.
+- Đảo chiều đường: đảo vị trí kênh, đổi dấu cả $\gamma$ và $\beta$; hình rãnh giữ nguyên.
+
+| Mục | Mặc định | Tùy chọn mỗi đường |
+| :--- | :--- | :--- |
+| Góc gãy | Theo vết dao: mép ngoài tự tròn | Vát nhọn (miter), giới hạn tỉ lệ mũi (mặc định 4) |
+| Giao nhau cùng layer | Sâu nhất: rãnh min, gờ max; không cộng dồn | Hòa mượt: smooth-min bán kính $r$ mm |
+| Rãnh qua gờ cùng layer | Gờ gộp trước, rãnh cắt sau | Muốn gờ đè rãnh: đặt gờ ở layer trên |
+| Đầu/cuối | Tròn theo dao | Cắt phẳng; Thu nhỏ dần trên đoạn $L$ mm |
+
+- Đường khác layer tuân cây layer (bám nền, mục 5.11), không dùng min/max.
+- Nghiệm thu: rãnh V thẳng $\beta=\gamma=0$ khớp $w=2d\tan(\alpha/2)$; hai rãnh vuông góc cùng sâu cho đáy giao đúng độ sâu, không sâu gấp đôi; $\beta \ne 0$ làm lệch đáy tại đầu rãnh theo $d\tan\beta$ trên nền phẳng; cấu hình vượt $\alpha/2$ báo undercut.
+
 
 
 ---
@@ -686,85 +503,89 @@ src/bscu/nodes/relief_displace.py # Node group DUY NHẤT của Tab 4: Set Posit
 
 ```mermaid
 graph TD
-    subgraph T1["Tab 1: Caro Map"]
+    subgraph T1["Tab 1: Chuẩn bị phôi"]
         UV_Active["BSCU_UV_Active (UV duy nhất)"]
         Metrics["rho_f, D_f, Overlap"]
         AutoSeam["Auto-Seam Assist (đề xuất cây cắt)"]
     end
 
-    subgraph T2["Tab 2: Seam"]
+    subgraph T2["Tab 2: Chia mảng"]
         SeamSet["edge.use_seam (TẬP DUY NHẤT)"]
-        Validator["Validator: island, chi, dead-end"]
+        Validator["Validator: topology sau mở + ánh xạ"]
         Preview["Two-Tier Preview (fast/commit)"]
     end
 
-    subgraph T3["Tab 3: Unwrap"]
+    subgraph T3["Tab 3: Bản trải"]
         Islands["UV Islands + khóa cache"]
-        Hybrid["Hybrid: Blender API + refine numpy"]
-        Packing["Uniform Metric Packing"]
+        Hybrid["Pipeline solver/refine chung"]
+        Packing["Bố cục không tự scale"]
     end
 
-    subgraph T4["Tab 4: Height Map"]
-        CadCurves["Curve Object thật (local canvas space)"]
+    subgraph T4["Tab 4: Tạo phù điêu"]
+        Store["Kho thiết kế K1 (Mesh ẩn + PropertyGroup, canvas mm)"]
         Regions["Vùng derived (planar graph)"]
-        DualSplines["Spline 1 & 2 + Custom Properties"]
-        VirtualZ["Z_Height_Virtual -> mesh attribute cnc_height (core/height_field.py)"]
+        DualSplines["Thuộc tính đường + dáng mảng + lưới nắn + instance"]
+        Evaluate["evaluate() core/height_field.py"]
+        Overlay["Lớp phủ + liên kết snap (mục 10)"]
     end
 
     subgraph MESH["Phôi 3D"]
-        GN["Geometry Nodes: Set Position theo Normal, đọc cnc_height"]
-        Relief["Bề mặt phù điêu 3D"]
+        PreviewImg["Ảnh cao độ preview theo UV (cache)"]
+        GN["Geometry Nodes: đọc ảnh theo UV, Set Position theo Normal"]
+        Relief["Bề mặt phù điêu 3D (preview)"]
+        Masks["Mask lớp phủ theo UV + material BSCU_Relief"]
+        Export["Xuất: lưới thích nghi, evaluate tại đỉnh (mục 9)"]
     end
 
     Metrics --> AutoSeam
-    AutoSeam -->|đề xuất| SeamSet
+    AutoSeam -->|ứng viên, chỉ ghi khi duyệt| SeamSet
     SeamSet --> Validator
     Validator --> Preview
     Preview -.->|invalidate theo khóa| Islands
     UV_Active --> Islands
     Islands --> Hybrid
     Hybrid --> Packing
-    Packing --> CadCurves
-    CadCurves --> Regions
+    Packing -->|biến đổi bố cục, không sửa nét nguồn| Store
+    Store -->|chỉ đường bao| Regions
     Regions --> DualSplines
-    DualSplines --> VirtualZ
-    VirtualZ --> GN
+    Store -->|hiệu ứng đường độc lập| Evaluate
+    DualSplines --> Evaluate
+    Evaluate --> PreviewImg
+    PreviewImg --> GN
     UV_Active --> GN
     GN --> Relief
+    Store -->|liên kết một chiều| Overlay
+    Overlay --> Masks
+    Masks --> Relief
+    Evaluate --> Export
     SeamSet -->|sửa seam| Islands
-    Islands -->|local canvas space| CadCurves
+    Islands -->|local canvas space| Store
 ```
 
-**Ghi chú thực thi:** mọi cạnh đi xuôi trong đồ thị này đều chạy qua mô hình D1 ở mục 2.8 — phần toán trong `core/` chạy trên worker thread, phần ghi vào Blender chỉ chạy trên main thread. Đồ thị là **luồng phụ thuộc dữ liệu**, không phải luồng gọi hàm tuần tự.
+**Ghi chú thực thi:** đồ thị biểu diễn phụ thuộc, không là chuỗi gọi tuần tự hoặc các solver độc lập theo tab. Pipeline tuân D1 tại mục 2.8: `bpy` trên main thread, job gắn revision; cơ chế chạy nền phải kiểm chứng trước triển khai.
 
 ### Bảng Sở hữu Trạng thái (Single Source of Truth) — chống trùng lặp
 
 | Trạng thái | Nơi duy nhất sở hữu | Ai được ghi | Ai chỉ đọc |
 | :--- | :--- | :--- | :--- |
-| UV Map | `BSCU_UV_Active` (UV layer trên mesh) | Tab 1 (relax/cọ), Tab 3 (unwrap/refine/pack) | Tab 2 (metric), Tab 4 (chiếu) |
-| Tập Seam | `mesh.edges[i].use_seam` | Tab 1 (Auto-Seam đề xuất + user duyệt), Tab 2 (4 công cụ tay) | Tab 3, Tab 4 |
+| UV Map đã duyệt | `BSCU_UV_Active` | Pipeline chung áp ứng viên hợp lệ sau xác nhận theo mục 6 | Tab 1–4 |
+| Tập Seam đã duyệt | `mesh.edges[i].use_seam` | Pipeline áp đề xuất/chỉnh sửa được duyệt | Tab 1–4 |
 | Island & khóa cache | `core/uv_islands.py` (dẫn xuất, không lưu file) | Hệ thống | Tab 2 (preview), Tab 3, Tab 4 |
-| Hình học 2D | Curve Object thật trong Collection | Tab 4 | `core/height_field.py` |
-| Tham số CNC | Custom Properties trên Curve/Mesh | Tab 4 (Inspector) | `core/height_field.py` |
-| Đường cong profile | Custom Properties trên object cùng loại (`cnc_profile_spline1/2` + danh sách dot) | Tab 4 (Inspector + biểu đồ đôi) | `core/height_field.py` |
-| Trường độ cao ảo | mesh attribute `cnc_height` | `core/height_field.py` | Geometry Nodes (đọc để bơm) |
+| Hình học 2D, ID, kênh dọc đường, liên kết snap | Kho thiết kế K1: Mesh dữ liệu `BSCU_Design_<phôi>` | Operator Tab 4 qua `bridge/design_store.py` | `core/` (qua snapshot) |
+| Cây folder/layer/lớp phủ, hiệu ứng, mẫu/instance, bộ đếm ID | PropertyGroup `bscu_design` trên Object phôi (K1) | Operator/Inspector Tab 4 | `core/` (qua snapshot) |
+| Nút giao điều khiển | Mảng sở hữu nút chung, đường tham chiếu ID | Inspector/canvas | `core/height_field.py` |
+| Trường cao độ | Hàm `evaluate()`; không lưu trường | — | Preview, xuất |
+| Ảnh cao độ preview, mask lớp phủ | Ảnh pack vào `.blend`, **cache** gắn revision (K2); sai revision thì tính lại | Cầu nối main thread | Geometry Nodes, material |
 
 Nguyên tắc: **không tồn tại bản sao thứ hai của bất kỳ dòng nào ở trên.** Mọi Tab khác chỉ đọc hoặc ghi vào đúng ô sở hữu.
 
-### Các Tình Huống Đồng Bộ Ngược (Reverse Invalidation Rules):
-1. **Khi User đang ở Tab 4 nhưng quay lại Tab 2 sửa Seam:**
-   - Đồ thị Seam thay đổi $\to$ Kích hoạt ngầm Tab 3 cập nhật lại biên dạng của các UV Islands.
-   - Các nét vẽ 2D trong Tab 4 vẫn giữ nguyên tọa độ tương đối trên UV Island tương ứng.
-   - Geometry Nodes tự động chiếu lại độ cao ảo `$Z_Height_Virtual` lên phôi 3D theo cấu trúc Seam mới mà người dùng không cần vẽ lại nét.
-2. **Khi User quay lại Tab 1 xoa cọ Relax UV:**
-   - Tọa độ UV cục bộ dịch chuyển $\to$ Lưới Caro trên 3D cân đối hơn.
-   - Nét vẽ 2D trên Canvas không đổi, nhưng hình chiếu của nó trên 3D sẽ tự động điều chỉnh tương ứng để giữ vững tỷ lệ hình học thực tế không bị co kéo.
-3. **Khi User chạy lại Auto-Seam Assist hoặc sửa Seam làm tách thêm mảng:**
-   - Island tái cấu trúc $\Rightarrow$ ánh xạ nét vẽ được khớp lại theo **tập mặt 3D gốc**, không theo `island_id` (vì ID có thể đổi).
-   - Nét vẽ nằm trên vùng vừa bị cắt đôi được **giữ nguyên trong Local Canvas Space** của island chứa nó; nét vẽ không bị xóa.
-   - Nếu một nét vẽ trải qua đường cắt mới $\Rightarrow$ hệ thống **cảnh báo** và đưa nét đó vào khu vực chờ (Parking Area) trên canvas, **không tự động cắt đôi nét** (thao tác phá hủy phải do người dùng quyết định).
-4. **Khi User đổi thang tỉ lệ hoặc khổ canvas ở Tab 3:**
-   - Local Canvas Space của mọi island được cập nhật theo $\rho^*$ mới; kích thước nét vẽ tính theo mm **không đổi**, chỉ đổi biểu diễn toạ độ.
+### Các tình huống đồng bộ ngược
+
+1. **Chưa có hoa văn:** thay seam/UV tự cập nhật bản trải và metric.
+2. **Đã có hoa văn:** tính bản mới ở trạng thái preview, giữ bản hiện hành. Nếu ảnh hưởng vị trí/kích thước hình chiếu, đánh dấu vùng ảnh hưởng và cho **Giữ bản cũ / Dùng bản mới** trước khi áp.
+3. **Tách/nhập island:** đối chiếu tập mặt nguồn thay vì ID thứ tự. Ánh xạ không chắc chắn báo **Cần đặt lại**, giữ nét và cấu hình; không tự xóa/cắt nét hoặc chọn mảng thay người dùng. Parking Area dành cho đối tượng chưa gán, không âm thầm di chuyển thiết kế hợp lệ.
+4. **Packing xoay/tịnh tiến:** đổi bố cục, không đổi nét. Đổi khổ canvas không tự scale hoa văn; đổi quy đổi mm/UV phải kiểm tra ảnh hưởng lên hình chiếu.
+5. **Sửa đường/mảng/nút:** tuân theo mục 5.6–5.7; lớp phủ liên kết cập nhật trong cùng giao dịch (mục 10.2). Preview là dữ liệu dẫn xuất, không là nguồn thiết kế thứ hai.
 
 ---
 
@@ -772,31 +593,218 @@ Nguyên tắc: **không tồn tại bản sao thứ hai của bất kỳ dòng n
 
 | Hạng mục | Tiêu chí Định lượng (Metrics) | Phương pháp Kiểm chứng |
 | :--- | :--- | :--- |
-| **Caro Map (Tab 1)** | Tốc độ gán Shader Caro tức thì (< 0.2s sau khi mở Tab). Biến dạng diện tích sau khi Auto Relax < 3%. | Headless script kiểm tra thuộc tính UV; so sánh sai số diện tích ô caro. |
-| **Seam (Tab 2)** | Hỗ trợ trọn vẹn 4 chế độ tạo Seam. Cảnh báo chính xác 100% các đường Seam cụt / lỗi topo non-disk. | Unit test thuật toán Dijkstra và Bisect cutting; tích hợp cảnh báo visual. |
-| **Unwrap (Tab 3)** | Tự động mở bố cục 2 màn hình (3D + 2D). Phát hiện 100% lỗi mảng đè nhau (Self-overlapping faces). | Kiểm tra trạng thái Window Layout qua `bpy.context.screen.areas`. |
-| **Height Map (Tab 4)** | Bố cục 3-Pane mượt mà. Đồ thị liên đới Nét vẽ $\to$ Vùng cập nhật tức thì < 50ms. Biểu đồ Spline đôi phản hồi mượt 60 FPS. | Modal operator chạy GPU draw callback; đo đạc độ trễ qua `time.perf_counter()`. |
-| **Độ chính xác CNC** | File STL xuất ra khép kín 100% (Watertight / Manifold), kích thước chi tiết sai lệch < 0.05mm so với thiết kế 2D. | Chạy kiểm tra thể tích và tính đóng kín qua công cụ `mcp__blender_measure_volume`. |
+| **Chuẩn bị phôi (Tab 1)** | Các ca đầu vào, bảo toàn phôi và mục tiêu đo tại mục 2.7. | Unit metric, headless và UI chọn vùng/overlay/hủy thật. |
+| **Chia mảng (Tab 2)** | Bốn công cụ và topology sau mở theo mục 3.7. | Ca đầu seam hợp lệ/lỗi, preview/Undo/cache trong UI thật. |
+| **Bản trải (Tab 3)** | Packing không đổi thiết kế, đo chiều dài sau chiếu, trạng thái theo mục 4.7. | Ca toán và thao tác 2D/3D thật. |
+| **Tạo phù điêu (Tab 4)** | Hành vi và mục tiêu hiệu năng tại mục 5.9, quét dao ảo mục 5.13. | Ca toán biết trước, lưu/undo, canvas/Inspector thật. |
+| **Lớp phủ, mẫu, nhập (mục 10)** | Liên kết bám đúng sau sửa nguồn; instance cập nhật theo mẫu; nhập đúng mm. | Ca toán biết trước, Undo/lưu/mở, render Blender thật. |
+| **Độ chính xác đầu ra (mục 9)** | Sai số mặt xuất so với `evaluate` ≤ 0.05 mm (max) trên bộ ca công bố; khối kín (nếu chọn) manifold. | Lấy mẫu ngẫu nhiên đo sai số; manifold/volume không chứng minh độ chính xác kích thước. |
 
 ---
 
 ## 8. THỨ TỰ TRIỂN KHAI UI/UX (BUILD ORDER)
 
-Thứ tự dưới đây suy ra trực tiếp từ đồ thị phụ thuộc ở mục 6: **mỗi tầng chỉ được viết sau khi tầng phụ thuộc của nó đã có unit test PASS.**
+Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas tối thiểu + prototype Studio/Inspector U2) phải có trước UX-7/UX-8 sử dụng canvas và trước UX-9b/UX-10. Mã UX là định danh hạng mục, không bắt buộc thứ tự số khi có phụ thuộc này.
 
 | Bước | Hạng mục | Module chính | Nghiệm thu trước khi đi tiếp |
 | :--- | :--- | :--- | :--- |
 | **UX-0** | Khung Addon & điều hướng 4 Tab | `src/bscu/__init__.py`, `ui/panel_tabs.py`, `ui/panel_*.py` | Đăng ký/hủy đăng ký sạch; `scripts/verify_all.py` PASS |
-| **UX-1** | Lớp toán UV thuần Python | `core/uv_metrics.py`, `core/uv_islands.py` | Unit test Jacobian, $\rho_f$, $D_f$, đếm island, $\chi$, dead-end |
-| **UX-2** | Cầu nối Blender + hàng đợi nền | `bridge/mesh_adapter.py`, `bridge/job_runner.py` | Vào/ra mảng numpy khớp byte-for-byte; worker thread **không** chạm vào `bpy` (kiểm bằng cách chạy `core/` ngoài Blender) |
-| **UX-3** | Tab 1: đo đạc + Overlay Caro | `nodes/checker_overlay.py`, `properties/uv_properties.py`, `operators/op_uv_relax_all.py` | RMS $<3\%$ trên bộ test; không phá vật liệu gốc khi rời Tab |
-| **UX-4** | Tab 1: Auto-Seam Assist | `core/seam_graph.py`, `operators/op_auto_seam.py` | Sphere kín $\to$ cây cắt hợp lệ, RMS $<3\%$, 200k tri $<3$s |
+| **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi |
+| **UX-2** | Cầu nối, job revision, kho thiết kế | `bridge/snapshot.py`, `bridge/job_runner.py`, `bridge/design_store.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender |
+| **UX-3** | Chuẩn bị phôi và overlay | UI, properties, checker overlay | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng và trạng thái chưa có UV |
+| **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định |
 | **UX-5** | Tab 1: Cọ 3D | `operators/op_uv_brush.py`, `core/uv_relax.py` | $F$/$Shift+F$/$Shift$ hoạt động; $\ge 30$ fps |
 | **UX-6** | Tab 2: 4 công cụ Seam | `operators/op_seam_*.py`, `core/uv_islands.py` | Validator đúng 100% trên bộ ca nhân tạo |
 | **UX-7** | Tab 2: Two-Tier Preview | `core/unwrap_solver.py`, `draw/seam_overlay.py` | $10$ Hz khi kéo, không khóa UI, cache đúng island |
-| **UX-8** | Tab 3: Hybrid Unwrap + Packing | `core/uv_refine.py`, `bridge/uv_bridge.py` | RMS $<3\%$, Overlap $=0$, rollback khi refine làm tệ đi |
-| **UX-9** | Nền tảng Canvas 2D dùng chung + Canvas Curve thật | `draw/canvas_2d.py`, `core/planar_graph.py`, `draw/cad_hud.py`, `operators/op_draw_stroke.py` | Canvas vẽ được Line/Arc/Spline + snap; nét vẽ/undo/lưu file nguyên vẹn; associativity $\le 50$ ms |
-| **UX-10** | Tab 4: Dual-Spline + bơm khối | `core/profile_curves.py`, `core/height_field.py`, `nodes/relief_displace.py` | Bơm khối $\le 100$ ms; kéo Dot $\ge 60$ fps; bộ test thuần Python cho SDF/profile |
-| **UX-11** | Xuất xưởng | `operators/op_export_stl.py` | STL Watertight 100%, sai lệch kích thước $< 0.05$ mm |
+| **UX-8** | Bản trải, refine và packing | `core/uv_refine.py`, `bridge/uv_bridge.py` | Mục 4.7; ứng viên lỗi không ghi đè bản hợp lệ, packing không đổi hình chiếu |
+| **UX-9a** | Canvas 2D dùng chung + prototype Studio 3 cột | `draw/canvas_2d.py`, `draw/batches.py`, `draw/snap.py`, `draw/graph_widget.py`, `operators/op_open_studio.py`, `operators/op_set_area_role.py` | Gate U2 trên Blender 4.5 thật: draw handler/input routing theo vai trò area, nhúng vào layout sẵn có, lưu/mở giữ vai trò; kho K1 lưu/Undo nguyên vẹn |
+| **UX-9b** | Công cụ CAD và nhận diện vùng | `core/geom2d.py`, `core/cad_ops.py`, `core/planar_graph.py`, `operators/op_draw_*.py`, `operators/op_cad_*.py` | Line/Arc/Bezier/Trim/Fillet/Chamfer/Extend + snap; associativity $\le 50$ ms; mục 5.6 |
+| **UX-10** | Trường cao độ, lưới nắn, Inspector, preview | `core/sdf.py`, `core/profile_curves.py`, `core/warp_grid.py`, `core/height_field.py`, `bridge/preview_image.py`, `nodes/relief_displace.py` | Mục 5.9 (trừ rãnh nghiêng dọc); preview theo D10 |
+| **UX-10b** | Quét dao ảo và nối rãnh | `core/groove_sweep.py` | Mục 5.13 |
+| **UX-11** | Xuất xưởng hai tầng và kiểm tra | `core/export_check.py`, `bridge/export_mesh.py`, `operators/op_export.py`, `ui/panel_export.py` | Mục 9.4 |
+| **UX-12** | Lớp phủ màu và liên kết snap | `core/overlay_links.py`, `bridge/material_builder.py`, `nodes/overlay_material.py` | Mục 10.3 |
+| **UX-13** | Mẫu/instance và nhập SVG/DXF | `core/svg_import.py`, `core/dxf_import.py`, `operators/op_import_vector.py`, `operators/op_template_*.py` | Mục 10.6 |
 
 **Định nghĩa Hoàn thành (Definition of Done) cho mỗi bước:** unit test PASS $\to$ chạy headless trên Blender thật $\to$ đo số liệu thực tế bằng MCP socket $\to$ cập nhật tài liệu quy trình tương ứng theo nguyên tắc Single Source of Truth.
+
+---
+
+## 9. XUẤT XƯỞNG CHO CNC 5 TRỤC
+
+### 9.1. Máy đích và định nghĩa 2.5D
+- Máy đích: CNC 5 trục. Phù điêu là **trường cao độ một giá trị trên bề mặt phôi**: mỗi điểm $(u,v)$ có đúng một cao độ, đẩy theo pháp tuyến phôi tham chiếu.
+- "2.5D" = không có hai cao độ tại cùng một điểm bề mặt; không mang nghĩa nhìn từ trên xuống theo Z. Undercut so với pháp tuyến không biểu diễn được: báo lỗi, không clamp.
+- Tư thế dao/chạy dao thuộc CAM; BSCU không mô phỏng máy.
+
+### 9.2. Đầu ra
+- **Mặc định — Mặt gia công hở:** chỉ các mặt vùng trang trí đã đẩy, không cần kín. STL nhị phân hoặc OBJ, đơn vị mm.
+- **Tùy chọn — Khối kín toàn phôi:** chỉ bật khi phôi gốc kín và manifold; nếu không, khóa kèm lý do `X703`, không tự vá. Biên giữa vùng trang trí và vùng không trang trí dùng chung đỉnh, cao độ tại biên theo chuyển tiếp mảng.
+- Tầng xuất theo D10 (mục 5.10): lưới thích nghi, `evaluate` tại từng đỉnh.
+
+### 9.3. Kiểm tra trước xuất (panel **Kiểm tra & Xuất**)
+| Mức | Kiểm tra |
+| :--- | :--- |
+| Lỗi chặn | Lật mặt; tự giao do đẩy theo pháp tuyến (hốc lõm bán kính cong < cao độ nổi); undercut so với pháp tuyến |
+| Cảnh báo | Người dùng khai báo **bán kính dao nhỏ nhất**; tô vùng có bán kính cong lõm hoặc bề rộng rãnh nhỏ hơn dao, kèm **Đến vị trí**. Ghi rõ không phải mô phỏng CAM |
+| Số đo | Kích thước bao, sai số tầng xuất so với `evaluate` (max/RMS), số tam giác |
+
+### 9.4. Nghiệm thu
+- Bộ ca công bố: sai số max mặt xuất so với `evaluate` ≤ 0.05 mm; chạm giới hạn tam giác phải báo, không hạ dung sai ngầm.
+- Phôi hở không cho bật khối kín; phôi kín cho khối kín manifold.
+- Ca hốc lõm bán kính 2 mm với nổi 3 mm báo tự giao; rãnh 1 mm với dao 0.6 mm (đường kính 1.2 mm) được cảnh báo.
+
+---
+
+## 10. LỚP PHỦ MÀU, MẪU/INSTANCE VÀ NHẬP VECTOR
+
+### 10.1. Lớp phủ màu (render trong Blender)
+- Danh sách **Lớp phủ** riêng, dưới cây cao độ trong cột lớp; **không ảnh hưởng cao độ**. Lớp phủ trên đè lớp phủ dưới.
+- Mỗi lớp phủ gồm các vùng; biên vùng lấy từ: **tham chiếu liên kết** tới vector tạo khối (mảng, hoặc miệng rãnh/gờ bám kênh bề rộng), nét vẽ riêng có liên kết snap (10.2), hoặc nét nhập.
+- **Biên:** Vừa / Thu nhỏ / Nới rộng (dịch biên có dấu, mm canvas); làm mềm biên (mm); góc dịch Tròn/Nhọn. Thành dốc của khối được tô theo biên 2D.
+- **Render:** mỗi lớp phủ một mask ảnh theo `BSCU_UV_Active`, padding qua seam, độ phân giải px/mm riêng, pack vào `.blend`. BSCU tạo material `BSCU_Relief_<phôi>`: shader nền + node group mỗi lớp phủ trộn theo mask. GN gán material cho mặt trang trí **trong kết quả evaluated**, không sửa slot/material gốc (D2). Người dùng chỉnh shader trong node group của từng lớp phủ.
+
+### 10.2. Liên kết snap của lớp phủ
+Khi vẽ/sửa nét lớp phủ, snap vào hình học điêu khắc **tạo liên kết bám một chiều**. Ngoại lệ có chủ đích so với mục 5.11 (snap giữa layer điêu khắc không liên kết).
+
+| Snap vào | Liên kết lưu | Khi nguồn đổi |
+| :--- | :--- | :--- |
+| Endpoint / điểm neo | ID đường + ID điểm neo | Theo điểm neo |
+| Midpoint | ID đường + ID đoạn | Luôn ở trung điểm đoạn |
+| On-Curve | ID đường + tỉ lệ chiều dài $t\in[0,1]$ | Giữ $t$ trên đường mới |
+| Intersection | Hai ID đường + thứ tự giao điểm | Tính lại giao điểm |
+| Mép rãnh/gờ | ID đường + $t$ + trái/phải | Theo miệng rãnh, bám kênh bề rộng |
+| **Đoạn bám theo** (Shift) | Hai điểm liên kết cùng đường + nhánh | Đoạn trùng nguồn giữa hai điểm |
+
+- Nguồn: nét, điểm neo, mép rãnh/gờ, biên mảng của mọi layer điêu khắc, kể cả hình học trong instance (qua biến đổi instance). Alt khi thả: snap không liên kết.
+- Hiển thị: điểm liên kết ◆, điểm tự do ●, đoạn bám theo nét đứt kép; chọn điểm highlight nguồn; cột chức năng hiện loại liên kết và **Bỏ liên kết**.
+- Tính: lan truyền xuôi một chiều (nguồn không phụ thuộc lớp phủ), không solver ràng buộc, không vòng. Sửa nét điêu khắc tính lại lớp phủ phụ thuộc **trong cùng giao dịch Undo**.
+- Nguồn mất/mơ hồ: điểm giữ vị trí cuối, trạng thái **Liên kết hỏng** (`C501`) với Đến vị trí / Liên kết lại / Chuyển thành tự do; vùng render theo hình cũ có đánh dấu; không tự đoán nguồn.
+- Kéo trực tiếp điểm liên kết hỏi *Bỏ liên kết để di chuyển?*; không cắt liên kết ngầm. Liên kết lưu bằng ID bền vững (K2), không theo index.
+
+### 10.3. Nghiệm thu lớp phủ
+- Dời điểm neo, đổi bề rộng rãnh, sửa biên mảng: vùng phủ liên kết cập nhật đúng vị trí tính trước; một Ctrl+Z hoàn tác cả nguồn lẫn lớp phủ.
+- Xóa đường nguồn cho `C501`, vùng không biến mất; Nới rộng 1 mm cho biên cách nguồn 1 mm ± dung sai.
+- Lưu/mở `.blend` giữ liên kết; render Cycles/EEVEE thấy màu đúng vùng; material gốc của phôi không đổi.
+
+### 10.4. Mẫu và instance liên kết
+- **Tạo mẫu** từ tập nét chọn: gồm nét, hiệu ứng và vùng phủ tham chiếu bên trong (kiểu Symbol/Block).
+- **Copy:** bản sao độc lập, ID mới. **Instance:** tham chiếu mẫu với biến đổi riêng dời/xoay/**scale đều**/lật; scale không đều bị khóa. Scale co giãn hình học và bề rộng, **không đổi độ sâu/cao**; tùy chọn *hệ số cao độ*.
+- Sửa mẫu cập nhật mọi instance; **Tách liên kết** biến instance thành copy. Instance nằm trong một mảng; phần ra ngoài mảng không chiếu và cảnh báo `R405`.
+- Nguồn copy/instance: vector tạo khối của mọi thiết kế BSCU trong file hiện tại.
+
+### 10.5. Nhập SVG/DXF (parser thuần Python trong `core/`)
+- **SVG:** path, line, rect, circle, ellipse, polyline, polygon, transform; mm theo width/height + viewBox (px = 1/96 in).
+- **DXF ASCII:** LINE, ARC, CIRCLE, LWPOLYLINE (bulge), POLYLINE, SPLINE, ELLIPSE; INSERT được phá block. Đơn vị theo `$INSUNITS`, thiếu thì hỏi.
+- Cung/spline/elip chuyển Bezier sai số ≤ 0.001 mm. Thực thể không hỗ trợ (text, ảnh, DXF nhị phân) bỏ qua và báo theo loại + số lượng (`I601`).
+- Nhập vào layer/mảng đích dạng **nét thường chưa hiệu ứng**, hoặc **Nhập làm mẫu**; tùy chọn map layer DXF → layer BSCU. Một lần nhập = một bước Undo; không liên kết sống với file nguồn.
+
+### 10.6. Nghiệm thu mẫu/nhập
+- Sửa mẫu → mọi instance đổi; instance scale 2 giữ độ sâu; Tách liên kết rồi sửa mẫu không đổi bản đã tách.
+- SVG hình tròn r=10 mm và DXF ARC nhập đúng kích thước trong 0.001 mm; DXF không đơn vị hỏi đơn vị; thực thể lạ được báo.
+
+---
+
+## 11. KIẾN TRÚC KỸ THUẬT (K1–K7)
+
+Nền tảng: **Blender 4.5 LTS trở lên** (Extensions, `blender_manifest.toml`), numpy đi kèm Blender, không scipy. Giao diện **chỉ tiếng Việt**, chuỗi cố định trong code.
+
+**K1 — Kho thiết kế riêng.**
+- Nét, điểm neo, tay nắm, ID, kênh dọc đường, liên kết snap lưu trong Mesh dữ liệu ẩn `BSCU_Design_<phôi>` (không link vào scene hiển thị): đỉnh = điểm neo, thuộc tính int/float trên đỉnh/cạnh (ID, tay nắm, kênh), đọc/ghi hàng loạt bằng `foreach_get/foreach_set`.
+- Cây folder/layer/lớp phủ, hiệu ứng, mẫu/instance, bộ đếm ID: PropertyGroup `bscu_design` trên Object phôi.
+- Curve Object chỉ sinh ra khi cần xem/xuất, không là nguồn. Nét chỉ sửa qua công cụ BSCU.
+
+**K2 — ID và Undo.**
+- ID: số nguyên 64-bit tăng dần theo thiết kế, **không tái dùng**; không dùng index làm định danh.
+- Dữ liệu thiết kế nằm trong datablock Blender ⇒ Undo/Redo/lưu file dùng cơ chế chuẩn. Mỗi modal operator kết thúc đẩy **một** bước Undo.
+- Dẫn xuất (cache, vùng, ảnh preview) ở RAM; handler `undo_post`/`redo_post`/`load_post` tăng revision và tính lại.
+
+**K3 — Job và revision (thực thi D1).**
+- `bridge/snapshot.py` chụp dữ liệu thành mảng numpy trên main thread.
+- Worker `threading.Thread` (numpy nhả GIL); `bpy.app.timers` poll ~30 ms, chỉ áp kết quả khi revision khớp. Mỗi loại job chỉ giữ job mới nhất; job cũ hủy qua cờ.
+- Gate UX-2: nếu prototype cho thấy giật UI, chuyển job nặng sang `multiprocessing`.
+
+**K4 — Solver.**
+- Preview: LSCM trong `core/lscm.py` + ma trận thưa CSR và CG tự viết (`core/sparse_cg.py`). Lưới nắn khối: biharmonic trên lưới, Dirichlet tại nút/biên, cũng CG (`core/warp_grid.py`).
+- Kết quả chuẩn: `bpy.ops.uv.unwrap(method='MINIMUM_STRETCH')` trên main thread theo từng mảng; đo lại metric trên kết quả cuối (D8).
+
+**K5 — Trường cao độ.**
+- Bezier làm phẳng thành polyline sai số 0.001 mm.
+- Preview: mỗi đoạn chỉ tính trong hộp ảnh hưởng (rộng/2 + bán kính hòa) trên lưới 0.25 mm; khoảng cách trong vùng bằng EDT tách trục (Felzenszwalb) thuần numpy.
+- Xuất: khoảng cách chính xác tới polyline qua lưới bucket, gọi tại đỉnh (D10).
+- Thứ tự: cây layer (5.11) → lớp phủ (mục 10, chỉ mask, không cao độ).
+
+**K6 — Module `src/bscu/`.**
+
+| Gói | Module |
+| :--- | :--- |
+| `core/` | `ids`, `geom2d`, `planar_graph`, `cad_ops`, `sdf`, `groove_sweep`, `profile_curves`, `warp_grid`, `height_field`, `overlay_links`, `uv_metrics`, `uv_islands`, `seam_graph`, `lscm`, `sparse_cg`, `svg_import`, `dxf_import`, `export_check` |
+| `bridge/` | `snapshot`, `job_runner`, `design_store`, `uv_bridge`, `preview_image`, `material_builder`, `export_mesh` |
+| `nodes/` | `relief_displace`, `overlay_material` |
+| `draw/` | `canvas_2d`, `batches`, `snap`, `graph_widget` |
+| `operators/` | mỗi operator một file `op_<action>.py` |
+| `ui/` | mỗi panel một file `panel_<name>.py` |
+| `properties/` | mỗi nhóm một file (`design_props`, `mesh_props`, …) |
+
+**K7 — Giới hạn file:** 300–500 dòng mỗi `.py` theo `docs/standards/coding_rules.md` (nguồn chính thức).
+
+---
+
+## 12. GIAO DIỆN CHUNG (U1–U5)
+
+**U1 — Điểm vào và thanh bước.** N-panel **BSCU** trong 3D Viewport thường; trên cùng là thanh 4 bước, mỗi bước mang trạng thái *Chưa làm / Đang tính / Có cảnh báo / Cần sửa / Xong*; bấm để chuyển panel. Tab 1 làm việc trực tiếp trên 3D; Tab 2–4 có **Mở Studio**.
+
+**U2 — Studio 3 cột.**
+
+```
++------------------------------+------------------------------+-------------+
+| Canvas 2D (VIEW_3D ortho)    | Xem trước 3D (VIEW_3D)       | Cột chức    |
+| Toolbar trái: công cụ BSCU   |                              | năng (hẹp)  |
+| lớn, kéo đổi kích thước      | lớn, kéo đổi kích thước      | ẩn/hiện     |
+|                              |                              | theo công cụ|
++------------------------------+------------------------------+-------------+
+```
+
+- **Canvas 2D** và **Xem trước 3D** là hai cột lớn, là area chuẩn của Blender nên kéo đổi kích thước, gộp/tách, phóng toàn màn hình (Ctrl+Space) như mọi layout Blender.
+- **Cột chức năng** hẹp bên phải: nội dung ẩn/hiện theo công cụ và đối tượng đang chọn — cây Lớp/Lớp phủ, thuộc tính, ô số, và biểu đồ (dọc đường, tiết diện, nút giao) chỉ khi liên quan. Cột là một area riêng (Image Editor không gắn ảnh: vùng WINDOW vẽ biểu đồ GPU + nhận chuột, sidebar chứa thuộc tính); người dùng có thể thu gọn.
+- **Hai cách dùng:** (a) Workspace preset `BSCU Studio` tạo một lần, lần sau chỉ chuyển sang; (b) **nhúng vào layout sẵn có**: mọi area 3D Viewport/Image Editor đều có lệnh **Đặt làm Canvas BSCU / Xem trước BSCU / Cột chức năng BSCU** (menu header), không bắt buộc workspace riêng. Vai trò area lưu theo screen; BSCU không tự tái chia area.
+- Gate prototype (UX-9a) trên Blender 4.5: draw handler và input routing đúng area vai trò, lưu/mở giữ vai trò area, nhiều canvas cùng lúc không xung đột. Thất bại thì xét lại D11–D12 trước khi làm tiếp.
+
+**U3 — Phím tắt (chỉ khi con trỏ trên canvas).**
+
+| Nhóm | Phím |
+| :--- | :--- |
+| Điều hướng | MMB pan, lăn zoom tại con trỏ, Home vừa khung |
+| Chọn | LMB, Shift+LMB thêm, B khung, A tất cả, Alt+A bỏ chọn |
+| Biến đổi | G dời, R xoay, S scale, X xóa |
+| Vẽ | L đường liên tục, C cung, P Bezier, Tab sửa điểm neo |
+| Khi vẽ/biến đổi | Gõ số nhập giá trị, Tab chuyển trường; Ctrl tắt snap tạm; Shift đoạn bám theo; Alt snap không liên kết; Enter xác nhận; Esc hủy |
+
+Không chiếm Space; Undo là Ctrl+Z của Blender; keymap addon cho phép đổi phím.
+
+**U4 — Danh mục thông báo.** Ba mức **Lỗi chặn / Cảnh báo / Thông tin**; mỗi thông báo có mã, vị trí (**Đến vị trí**), lý do và hành động sửa.
+
+| Mã | Mức | Nội dung |
+| :--- | :--- | :--- |
+| `P101` | Lỗi chặn | Mặt suy biến/topology không hỗ trợ trong vùng trang trí |
+| `P102` | Thông tin | Chưa có bản trải |
+| `S201` | Cảnh báo | Mảng không phải dạng đĩa sau mở seam |
+| `S202` | Thông tin | Đầu seam bậc 1 cần xem |
+| `U301` | Lỗi chặn | Lật/suy biến/overlap UV trong miền chiếu |
+| `U302` | Cảnh báo | Sai lệch vượt ngưỡng đã hiệu chuẩn |
+| `U303` | Cảnh báo | Bố cục vượt khổ canvas |
+| `R401` | Cảnh báo | Đường bao hở, hiệu ứng vùng tạm ngừng |
+| `R402` | Lỗi chặn | Undercut rãnh/khối so với pháp tuyến |
+| `R403` | Cảnh báo | Ràng buộc nút nắn xung đột |
+| `R404` | Lỗi chặn | Vòng phụ thuộc tham chiếu |
+| `R405` | Cảnh báo | Instance vượt ngoài mảng |
+| `C501` | Cảnh báo | Liên kết lớp phủ hỏng |
+| `I601` | Thông tin | Thực thể nhập không hỗ trợ đã bỏ qua |
+| `I602` | Lỗi chặn | File nhập không đọc được / DXF nhị phân |
+| `X701` | Lỗi chặn | Tự giao do đẩy theo pháp tuyến |
+| `X702` | Cảnh báo | Hốc/rãnh nhỏ hơn bán kính dao khai báo |
+| `X703` | Lỗi chặn | Khối kín yêu cầu phôi kín manifold |
+| `X704` | Cảnh báo | Chạm giới hạn tam giác trước dung sai |
+
+Mã mới thêm vào bảng này, không định nghĩa rải rác.
+
+**U5 — Thứ tự triển khai:** mục 8.

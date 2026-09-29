@@ -24,8 +24,9 @@ Thư mục `docs/` là nơi lưu trữ toàn bộ thông tin kiến trúc, kỹ 
 
 | Tên file | Nơi lưu trữ | Tóm tắt nội dung |
 | :--- | :--- | :--- |
-| `brainstorming.md` | `docs/concept/brainstorming.md` | TDD v1.1.0 đặc tả kiến trúc Studio 2D CAD (3-Pane Hybrid), thuật toán Lưới lấy mẫu SDF đồng nhất, điều khiển Profile dốc 2 cấp và lộ trình triển khai. |
-| `UIUX.md` | `docs/concept/UIUX.md` | Đặc tả UI/UX pipeline 4 Tab (Caro Map → Seam → Unwrap → Height Map) v1.1.0: nền tảng canvas 2D dùng chung, chỉ số biến dạng UV, Auto-Seam Assist, Two-Tier Preview, Hybrid Unwrap, 3-Pane CAD Studio, các quyết định vận hành D1–D12 và thứ tự triển khai UX-0 → UX-11. |
+| `brainstorming.md` | `docs/concept/brainstorming.md` | TDD v1.1.0 (lịch sử): bối cảnh, triết lý và thuật toán ban đầu. Mọi điểm mâu thuẫn với `UIUX.md` v1.5.0 (kho dữ liệu, D10 hai tầng, Studio 3 cột, solver) thì `UIUX.md` thắng. |
+| `UIUX.md` | `docs/concept/UIUX.md` | Spec thực thi v1.5.0: UI/UX 4 bước, Tab 4 đường/mảng/lưới nắn/folder cộng dồn/quét dao ảo; xuất xưởng CNC 5 trục (mục 9); lớp phủ màu, liên kết snap, mẫu/instance, nhập SVG/DXF (mục 10); kiến trúc K1–K7 (mục 11); Studio 3 cột, phím, mã thông báo (mục 12); build order UX-0→UX-13. |
+| `UIUX-root.md` | `docs/concept/UIUX-root.md` | Ý tưởng UI/UX gốc của người dùng (đầu vào, không phải spec). |
 | `agent_setup.md` | `docs/tooling/agent_setup.md` | Hướng dẫn cấu hình CodeGraph MCP Server và bộ kỹ năng Superpowers cho AI coding agent. |
 | `coding_rules.md` | `docs/standards/coding_rules.md` | Quy chuẩn lập trình bắt buộc: file 300-500 dòng, đơn nhiệm, tách Pure Logic khỏi bpy, test tự động. |
 | `blender_debug_workflow.md` | `docs/debugging/blender_debug_workflow.md` | Quy trình debug 4 cấp độ: Unit test pure logic, Headless Blender, MCP Live Control (mcp-blender) và DAP Remote Debug. |
