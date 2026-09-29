@@ -45,7 +45,7 @@
 2. **Các skill tối thiểu áp dụng theo giai đoạn:**
    - `using-superpowers` — mở đầu mọi phiên làm việc, trước mọi phản hồi khác.
    - `brainstorming` — trước khi bắt đầu công việc sáng tạo (tính năng, component, chức năng mới).
-   - `writing-plans` — khi có đặc tả/spec cho tác vụ nhiều bước, trước khi chạm vào code.
+   - ~~`writing-plans`~~ — **KHÔNG dùng** (xem quy tắc 4 bên dưới).
    - `test-driven-development` — trước khi viết implementation, không phải sau.
    - `systematic-debugging` — khi gặp bug, test fail hoặc hành vi lạ, trước khi đề xuất fix.
    - `verification-before-completion` — trước khi tuyên bố hoàn thành, commit hoặc tạo PR.
@@ -53,4 +53,9 @@
    - `using-git-worktrees` — khi cần workspace cách ly cho feature work.
    - `dispatching-parallel-agents` / `subagent-driven-development` — khi có 2+ task độc lập.
 3. **Các skill khác** (`writing-skills`, `finishing-a-development-branch`, `diagnosing-superpowers`) áp dụng theo ngữ cảnh tương ứng.
-4. **Ưu tiên:** Skill đọc được **luôn thắng** hướng dẫn mặc định khi có xung đột.
+4. **Không tạo tài liệu kế hoạch riêng — code bám theo spec đã chốt:**
+   - **Sau khi spec đã được duyệt, agent KHÔNG chạy `writing-plans` và KHÔNG tạo file kế hoạch / implementation-plan riêng.** Tài liệu đặc tả đã chốt (`docs/concept/UIUX.md`, `docs/concept/brainstorming.md`) **chính là** kế hoạch thực thi.
+   - Thứ tự triển khai lấy nguyên từ mục **UX-0 → UX-11** trong `UIUX.md`; từng bước phải đạt gate nghiệm thu của chính bước đó mới được sang bước sau.
+   - Khi phát hiện spec còn lỗ hổng hoặc mâu thuẫn: **dừng code, cập nhật trực tiếp vào file spec** (Single Source of Truth) rồi tiếp tục — không tạo tài liệu kế hoạch song song.
+   - `test-driven-development` và `verification-before-completion` vẫn **bắt buộc**: bỏ qua `writing-plans` không phải bỏ qua kiểm thử.
+5. **Ưu tiên:** Skill đọc được **luôn thắng** hướng dẫn mặc định khi có xung đột — riêng quy tắc 4 ở trên thay thế bước chuyển tiếp `writing-plans` của skill `brainstorming`.
