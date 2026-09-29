@@ -176,6 +176,19 @@ Hệ thống tích hợp MCP Server cho phép AI Agent và Developer tương tá
 9. **Cô lập Suite Kiểm Thử Khi Cài Add-on Thật:**
    - Suite cài extension giữ lại bản đã cài trong `sys.modules`, khiến suite sau âm thầm chạy code cũ. `tests/run_tests.py` phải xoá cache module `bscu*` trước mỗi suite.
 
+
+10. **Đo Chặn Main Thread Thay Vì Tin Rằng "Nó Chạy Nền":**
+   - D1 cấm tuyên bố API unwrap của Blender "chạy nền" khi chưa đo. Lệnh đo:
+     ```bash
+     blender/blender.exe -b --python tests/run_tests.py
+     ```
+     và đọc các dòng `[MEASURE]` do `tests/integration/test_unwrap_blocking.py` in ra.
+   - Kết quả tham chiếu (Blender 5.2.2): `uv.smart_project` chặn 46 ms ở 36 864 tam giác (~1.26 µs/tam giác); ngân sách khung hình 16 ms bị vượt từ ~12 700 tam giác.
+   - Khi một đường Python chạy nhanh hơn mong đợi trong Blender, gần như luôn là vòng lặp Python thuần. Đo từng bước (`foreach_get` → gom nhóm → dict) trước khi tối ưu mù:
+     - Vòng lặp theo mặt để dựng dict cạnh: 28 ms ở 9k tam giác → thay bằng `argsort` trên khóa int64: gần 0.
+     - Dựng dict cạnh sẵn trong snapshot: 28 ms không cần thiết → biến thành thuộc tính **lazy**, vì phần lớn nơi gọi chỉ cần đếm số mặt mỗi cạnh.
+
+
 ---
 
 ## 4. Quy Trình Thu Thập Dữ Liệu Khi Gặp Bug (Data Gathering Protocol)

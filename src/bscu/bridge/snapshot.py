@@ -1,5 +1,5 @@
 """
-Blender-side mesh snapshot for the measurement pipeline (UX-1).
+Blender-side mesh snapshot for the measurement pipeline (UX-1/UX-2).
 
 The only place that touches bpy before the pure maths run. Everything it
 produces is plain numpy in millimetres, so ``core/`` never needs Blender types.
@@ -8,8 +8,8 @@ Read-only by design: taking a snapshot must not modify the mesh, its seams or
 its UV maps.
 """
 
-from dataclasses import dataclass
-from typing import Dict, List, Set, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set, Tuple
 
 import bpy
 import numpy as np
@@ -20,8 +20,12 @@ BSCU_UV_NAME = "BSCU_UV_Active"
 MM_PER_METRE = 1000.0
 UV_PRECISION = 9
 
+# Corner keys are packed into one int64; these bound the packing.
+_MAX_PACKED_KEY = 1 << 62
+UV_KEY_QUANTUMS = (1e6, 1e3, 1.0)
 
-@dataclass(frozen=True)
+
+@dataclass
 class MeshSnapshot:
     """A triangulated surface with its UVs and seam set.
 
@@ -29,18 +33,45 @@ class MeshSnapshot:
     vertex count; see :func:`_split_corners`. Topology checks must use the
     ``source_*`` fields: the split surface is open by construction wherever the
     unwrap was cut, which says nothing about whether the mesh is mappable.
+
+    The edge maps are built on first use. Materialising them eagerly cost more
+    than the unwrap they describe, and most callers only need face counts.
     """
 
     verts_mm: np.ndarray
     uv: np.ndarray
     faces: np.ndarray
-    edge_faces: Dict[Tuple[int, int], List[int]]
     seam_edges: np.ndarray
     source_faces: np.ndarray
-    source_edge_faces: Dict[Tuple[int, int], List[int]]
+    _edge_faces: Optional[Dict[Tuple[int, int], List[int]]] = field(
+        default=None, repr=False
+    )
+    _source_edge_faces: Optional[Dict[Tuple[int, int], List[int]]] = field(
+        default=None, repr=False
+    )
 
     def __len__(self) -> int:
         return int(self.faces.shape[0])
+
+    @property
+    def edge_faces(self) -> Dict[Tuple[int, int], List[int]]:
+        """Edge to faces for the split surface."""
+        if self._edge_faces is None:
+            self._edge_faces = build_edge_faces(self.faces)
+        return self._edge_faces
+
+    @property
+    def source_edge_faces(self) -> Dict[Tuple[int, int], List[int]]:
+        """Edge to faces for the untouched mesh."""
+        if self._source_edge_faces is None:
+            self._source_edge_faces = build_edge_faces(self.source_faces)
+        return self._source_edge_faces
+
+
+def _metres_per_unit(obj) -> float:
+    """How many millimetres one Blender unit represents in this scene."""
+    scene = obj.users_scene[0] if obj.users_scene else bpy.context.scene
+    return float(scene.unit_settings.scale_length) * MM_PER_METRE
 
 
 def _positions_mm(obj) -> np.ndarray:
@@ -53,12 +84,6 @@ def _positions_mm(obj) -> np.ndarray:
     matrix = np.array(obj.matrix_world, dtype=np.float64)
     world = raw @ matrix[:3, :3].T + matrix[:3, 3]
     return world * _metres_per_unit(obj)
-
-
-def _metres_per_unit(obj) -> float:
-    """How many millimetres one Blender unit represents in this scene."""
-    scene = obj.users_scene[0] if obj.users_scene else bpy.context.scene
-    return float(scene.unit_settings.scale_length) * MM_PER_METRE
 
 
 def _loop_uv(mesh, uv_name: str) -> np.ndarray:
@@ -86,6 +111,28 @@ def _source_faces(mesh) -> np.ndarray:
     return tris.reshape(-1, 3)
 
 
+def _corner_keys(corner_vertex, corner_uv) -> np.ndarray:
+    """Pack (vertex, u, v) into one int64 so dedup is a 1-D sort.
+
+    np.unique(axis=0) over float rows costs several times the unwrap it feeds,
+    so corners are keyed by a single integer. When the UV span is too wide to
+    pack, the quantum is coarsened rather than falling back to a second path.
+    """
+    vertex_count = int(corner_vertex.max()) + 1
+    for quantum in UV_KEY_QUANTUMS:
+        quantised = np.rint(corner_uv * quantum).astype(np.int64)
+        lowest = quantised.min(axis=0)
+        span_u = int(quantised[:, 0].max() - lowest[0]) + 1
+        span_v = int(quantised[:, 1].max() - lowest[1]) + 1
+        if span_u * span_v * vertex_count <= _MAX_PACKED_KEY:
+            shifted = quantised - lowest
+            flat = (corner_vertex.astype(np.int64) * span_u + shifted[:, 0]) * span_v
+            return flat + shifted[:, 1]
+    raise ValueError(
+        "UV coordinates span too wide to index; rescale the unwrap before measuring"
+    )
+
+
 def _split_corners(obj, uv_name: str):
     """Split vertices wherever the UV changes, and return the split surface.
 
@@ -100,40 +147,30 @@ def _split_corners(obj, uv_name: str):
     """
     mesh = obj.data
     positions = _positions_mm(obj)
-    loop_uv = _loop_uv(mesh, uv_name)
     corner_loops = _corner_loops(mesh)
 
     loop_vertex = np.empty(len(mesh.loops), dtype=np.int64)
     mesh.loops.foreach_get("vertex_index", loop_vertex)
 
-    key_to_index: Dict[Tuple[int, float, float], int] = {}
-    split_positions: List[np.ndarray] = []
-    split_uv: List[np.ndarray] = []
-    source_vertex: List[int] = []
-    faces = np.empty(corner_loops.size, dtype=np.int64)
+    corner_uv = np.round(_loop_uv(mesh, uv_name)[corner_loops.ravel()], UV_PRECISION)
+    corner_vertex = loop_vertex[corner_loops.ravel()]
 
-    for position, loop_index in enumerate(corner_loops.ravel()):
-        vertex_index = int(loop_vertex[loop_index])
-        uv = loop_uv[loop_index]
-        key = (vertex_index, round(float(uv[0]), UV_PRECISION), round(float(uv[1]), UV_PRECISION))
-        index = key_to_index.get(key)
-        if index is None:
-            index = len(split_positions)
-            key_to_index[key] = index
-            split_positions.append(positions[vertex_index])
-            split_uv.append(uv)
-            source_vertex.append(vertex_index)
-        faces[position] = index
+    if corner_uv.shape[0] == 0:
+        empty = np.zeros(0, dtype=np.int64)
+        return np.zeros((0, 3)), np.zeros((0, 2)), empty.reshape(0, 3), empty
 
-    if not split_positions:
-        empty_faces = np.zeros((0, 3), dtype=np.int64)
-        return np.zeros((0, 3)), np.zeros((0, 2)), empty_faces, np.zeros(0, dtype=np.int64)
+    _, first_seen, inverse = np.unique(
+        _corner_keys(corner_vertex, corner_uv),
+        return_index=True,
+        return_inverse=True,
+    )
+    source_vertex = corner_vertex[first_seen]
 
     return (
-        np.vstack(split_positions),
-        np.vstack(split_uv),
-        faces.reshape(-1, 3),
-        np.asarray(source_vertex, dtype=np.int64),
+        positions[source_vertex],
+        corner_uv[first_seen],
+        inverse.reshape(-1, 3).astype(np.int64),
+        source_vertex,
     )
 
 
@@ -148,10 +185,9 @@ def _seam_vertices(mesh) -> Set[Tuple[int, int]]:
 
     endpoints = np.empty(len(mesh.edges) * 2, dtype=np.int64)
     mesh.edges.foreach_get("vertices", endpoints)
-    endpoints = endpoints.reshape(-1, 2)
+    endpoints = endpoints.reshape(-1, 2)[flags]
     return {
-        (min(int(a), int(b)), max(int(a), int(b)))
-        for a, b in endpoints[flags]
+        (min(int(a), int(b)), max(int(a), int(b))) for a, b in endpoints
     }
 
 
@@ -159,20 +195,28 @@ def _seam_split_edges(
     faces: np.ndarray, source_vertex: np.ndarray, seam_pairs: Set[Tuple[int, int]]
 ) -> np.ndarray:
     """Express the seam set in split-vertex indices."""
-    if not seam_pairs:
+    if not seam_pairs or faces.size == 0:
         return np.zeros((0, 2), dtype=np.int64)
 
-    found: Set[Tuple[int, int]] = set()
-    for face in faces:
-        a, b, c = int(face[0]), int(face[1]), int(face[2])
-        for left, right in ((a, b), (b, c), (c, a)):
-            pair = (source_vertex[left], source_vertex[right])
-            if (min(pair), max(pair)) in seam_pairs:
-                found.add((min(left, right), max(left, right)))
+    left = faces[:, [0, 1, 2]].ravel()
+    right = faces[:, [1, 2, 0]].ravel()
+    source_left = source_vertex[left]
+    source_right = source_vertex[right]
+    canonical = np.minimum(source_left, source_right)
+    other = np.maximum(source_left, source_right)
 
-    if not found:
+    wanted = sorted(seam_pairs)
+    lookup = {pair: index for index, pair in enumerate(wanted)}
+    is_seam = np.array(
+        [pair in lookup for pair in zip(canonical.tolist(), other.tolist())]
+    )
+    if not is_seam.any():
         return np.zeros((0, 2), dtype=np.int64)
-    return np.array(sorted(found), dtype=np.int64)
+
+    seam_left = np.minimum(left[is_seam], right[is_seam])
+    seam_right = np.maximum(left[is_seam], right[is_seam])
+    unique = np.unique(np.column_stack([seam_left, seam_right]), axis=0)
+    return unique.astype(np.int64)
 
 
 def take_snapshot(obj, uv_name: str = BSCU_UV_NAME) -> MeshSnapshot:
@@ -182,15 +226,12 @@ def take_snapshot(obj, uv_name: str = BSCU_UV_NAME) -> MeshSnapshot:
         raise ValueError(f"Snapshot needs a Mesh object, got {kind}")
 
     verts_mm, uv, faces, source_vertex = _split_corners(obj, uv_name)
-    source_faces = _source_faces(obj.data)
     return MeshSnapshot(
         verts_mm=verts_mm,
         uv=uv,
         faces=faces,
-        edge_faces=build_edge_faces(faces),
         seam_edges=_seam_split_edges(
             faces, source_vertex, _seam_vertices(obj.data)
         ),
-        source_faces=source_faces,
-        source_edge_faces=build_edge_faces(source_faces),
+        source_faces=_source_faces(obj.data),
     )

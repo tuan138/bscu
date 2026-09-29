@@ -2,9 +2,9 @@
 Properties package for BSCU. One PropertyGroup per module, each self-registering.
 """
 
-from . import ui_props
+from . import design_props, ui_props
 
-MODULES = (ui_props,)
+MODULES = (ui_props, design_props)
 
 
 def register():

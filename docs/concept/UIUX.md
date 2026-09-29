@@ -669,7 +669,7 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 | :--- | :--- | :--- | :--- | :--- |
 | **UX-0** | Khung Addon & điều hướng 4 Tab | `src/bscu/__init__.py`, `core/workflow.py`, `properties/ui_props.py`, `ui/panel_steps.py`, `ui/panel_stock.py`, `ui/panel_downstream.py`, `ui/context.py` | Đăng ký/hủy đăng ký sạch; `scripts/verify_all.py` PASS | **Xong** — commit `5139bc8`; 17 unit + 8 integration headless PASS |
 | **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py`, `bridge/snapshot.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi | **Xong** — 43 unit + 12 integration headless PASS; đo thật trên GUI: hình cầu 120 mm, $\rho^*$=0.003477 UV/mm (lý thuyết 0.003341), RMS $D$=0.207, 0 mặt lật, 0 suy biến |
-| **UX-2** | Cầu nối, job revision, kho thiết kế | `bridge/snapshot.py`, `bridge/job_runner.py`, `bridge/design_store.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender | Chưa làm |
+| **UX-2** | Cầu nối, job revision, kho thiết kế | `core/ids.py`, `core/jobs.py`, `bridge/design_store.py`, `bridge/job_runner.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender | **Xong** — 106 unit + 7 suite integration headless PASS. Đo D1: unwrap của Blender chặn main thread 46 ms ở 36 864 tam giác (1.26 µs/tam giác), vượt ngân sách khung hình 16 ms từ ~12 700 tam giác; snapshot 13.1 ms ở 9 216 tam giác |
 | **UX-3** | Phôi, vùng trang trí và overlay Caro | UI, properties, `bridge/checker_overlay.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) | Chưa làm |
 | **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định | Chưa làm |
 | **UX-5** | Tab 2: Chỉ dẫn cọ Caro + dàn đều | `operators/op_caro_brush.py`, `core/uv_hints.py`, `core/lscm.py` (trọng số) | Mục 3B.7; chỉ dẫn áp lại sau sửa seam; $F$/$Shift+F$/$Shift$; $\ge 30$ fps | Chưa làm |
@@ -701,6 +701,15 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 - **`smart_project` không đánh dấu `use_seam`.** Tập seam đã duyệt vẫn là quyết định của người dùng; phần cắt do UV sinh ra không được ghi ngược thành seam.
 - **Ngưỡng so sánh phải tránh sai số float32.** Blender lưu UV ở float32, nên bản trải hoàn hảo cho $\text{RMS} \approx 10^{-7}$, không phải đúng 0. Dùng dung sai $10^{-5}$.
 - **`scale_length` quyết định kích thước vật lý.** Với `scale_length = 0.001`, 1 Blender unit = 1 mm. Số đo lệch đúng hệ số tròn (1000) thì kiểm tra đơn vị trước khi kiểm tra code. Chi tiết tại `docs/debugging/blender_debug_workflow.md` mục 3.7.
+
+**Quyết định vận hành của UX-2 (đã code và kiểm chứng):**
+
+- **Bộ cấp ID sống theo phiên, không sống theo store.** Một `DesignStore` mới trên cùng phôi phải dùng lại đúng bộ cấp đó. Nếu mỗi store có bộ đếm riêng thì Undo cuộn ngược bộ đếm trong datablock sẽ phát hành lại ID cũ — đúng thứ K2 cấm.
+- **Bộ đếm chỉ đi lên.** `restore_high_water()` bỏ qua giá trị thấp hơn; không có API quay lui.
+- **`busy` của job runner phải tính cả kết quả chưa được poll.** Nếu chỉ nhìn trạng thái thread, một job hoàn tất trước vòng kiểm tra đầu tiên sẽ không bao giờ được áp dụng.
+- **Đo D1 trên main thread thật (Blender 5.2.2):** `uv.smart_project` chặn main thread 46 ms ở 36 864 tam giác, tức ~1.26 µs/tam giác. Ngân sách khung hình 16 ms bị vượt từ khoảng **12 700 tam giác**. Kết luận bắt buộc cho UX-7/UX-8: không được coi unwrap của Blender là tác vụ nền; trên bộ ca 200k tam giác bắt buộc chạy solver trên snapshot hoặc tách tiến trình.
+- **Chi phí chụp snapshot đã tối ưu có số liệu:** 13.1 ms ở 9 216 tam giác (1.42 µs/tam giác), ngoại suy 285 ms ở 200k tam giác. Vòng lặp Python theo mặt và dict cạnh là hai nút thắt đã loại bỏ (28 ms → gần 0) bằng argsort trên khóa int64; bản đồ cạnh giờ dựng **lazy** vì phần lớn nơi gọi chỉ cần đếm số mặt mỗi cạnh.
+- **Bộ ca nghiệm thu 200k tam giác của mục 3.7 (10 Hz) hiện chưa đạt với snapshot trên main thread.** Đây là lý do D10 bắt buộc có hai tầng: phần dựng hình thái phải chạy ngoài main thread.
 
 ---
 
