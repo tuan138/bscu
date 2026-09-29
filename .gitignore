@@ -26,3 +26,6 @@ external/
 *.blend
 *.blend1
 *.blend2
+
+# Blender backup files
+*.blend1

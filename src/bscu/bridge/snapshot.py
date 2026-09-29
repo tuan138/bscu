@@ -9,7 +9,7 @@ its UV maps.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import bpy
 import numpy as np
@@ -74,12 +74,22 @@ def _metres_per_unit(obj) -> float:
     return float(scene.unit_settings.scale_length) * MM_PER_METRE
 
 
+def _read_into(collection, attribute: str, count: int, dtype) -> np.ndarray:
+    """foreach_get into the dtype Blender actually stores, then cast once.
+
+    Handing foreach_get a float64 buffer for float32 storage makes Blender cast
+    element by element in C: on a 200k-triangle mesh that alone cost 109 ms.
+    """
+    native = np.empty(count, dtype=dtype)
+    collection.foreach_get(attribute, native)
+    return native
+
+
 def _positions_mm(obj) -> np.ndarray:
     """Mesh vertex positions in world space, converted to millimetres."""
     mesh = obj.data
-    raw = np.empty(len(mesh.vertices) * 3, dtype=np.float64)
-    mesh.vertices.foreach_get("co", raw)
-    raw = raw.reshape(-1, 3)
+    raw = _read_into(mesh.vertices, "co", len(mesh.vertices) * 3, np.float32)
+    raw = raw.astype(np.float64).reshape(-1, 3)
 
     matrix = np.array(obj.matrix_world, dtype=np.float64)
     world = raw @ matrix[:3, :3].T + matrix[:3, 3]
@@ -90,25 +100,26 @@ def _loop_uv(mesh, uv_name: str) -> np.ndarray:
     layer = mesh.uv_layers.get(uv_name)
     if layer is None:
         raise ValueError(f"UV layer {uv_name!r} not found on mesh {mesh.name!r}")
-    values = np.empty(len(mesh.loops) * 2, dtype=np.float64)
-    layer.data.foreach_get("uv", values)
-    return values.reshape(-1, 2)
+    values = _read_into(layer.data, "uv", len(mesh.loops) * 2, np.float32)
+    return values.astype(np.float64).reshape(-1, 2)
 
 
 def _corner_loops(mesh) -> np.ndarray:
     """Loop index of every triangle corner, shape (T, 3)."""
     mesh.calc_loop_triangles()
-    loops = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int64)
-    mesh.loop_triangles.foreach_get("loops", loops)
-    return loops.reshape(-1, 3)
+    loops = _read_into(
+        mesh.loop_triangles, "loops", len(mesh.loop_triangles) * 3, np.int32
+    )
+    return loops.astype(np.int64).reshape(-1, 3)
 
 
 def _source_faces(mesh) -> np.ndarray:
     """Mesh triangles in original vertex indices, before any UV splitting."""
     mesh.calc_loop_triangles()
-    tris = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int64)
-    mesh.loop_triangles.foreach_get("vertices", tris)
-    return tris.reshape(-1, 3)
+    tris = _read_into(
+        mesh.loop_triangles, "vertices", len(mesh.loop_triangles) * 3, np.int32
+    )
+    return tris.astype(np.int64).reshape(-1, 3)
 
 
 def _corner_keys(corner_vertex, corner_uv) -> np.ndarray:
@@ -174,42 +185,57 @@ def _split_corners(obj, uv_name: str):
     )
 
 
-def _seam_vertices(mesh) -> Set[Tuple[int, int]]:
-    """Undirected vertex pairs marked as seam by the user."""
+def _seam_keys(mesh) -> np.ndarray:
+    """Seam vertex pairs packed as one int64 key each.
+
+    Returning packed keys instead of a Python set keeps the later membership
+    test becomes a vectorised ``np.isin`` instead of 600k tuple comparisons.
+    """
     if len(mesh.edges) == 0:
-        return set()
+        return np.zeros(0, dtype=np.int64)
     flags = np.zeros(len(mesh.edges), dtype=bool)
     mesh.edges.foreach_get("use_seam", flags)
     if not flags.any():
-        return set()
+        return np.zeros(0, dtype=np.int64)
 
-    endpoints = np.empty(len(mesh.edges) * 2, dtype=np.int64)
-    mesh.edges.foreach_get("vertices", endpoints)
-    endpoints = endpoints.reshape(-1, 2)[flags]
-    return {
-        (min(int(a), int(b)), max(int(a), int(b))) for a, b in endpoints
-    }
+    endpoints = _read_into(mesh.edges, "vertices", len(mesh.edges) * 2, np.int32)
+    endpoints = endpoints.astype(np.int64).reshape(-1, 2)[flags]
+    return _pair_keys(
+        np.minimum(endpoints[:, 0], endpoints[:, 1]),
+        np.maximum(endpoints[:, 0], endpoints[:, 1]),
+        len(mesh.vertices) + 1,
+    )
+
+
+def _pair_keys(lower, upper, stride) -> np.ndarray:
+    return lower * stride + upper
 
 
 def _seam_split_edges(
-    faces: np.ndarray, source_vertex: np.ndarray, seam_pairs: Set[Tuple[int, int]]
+    faces: np.ndarray,
+    source_vertex: np.ndarray,
+    seam_keys: np.ndarray,
+    stride: int,
 ) -> np.ndarray:
-    """Express the seam set in split-vertex indices."""
-    if not seam_pairs or faces.size == 0:
+    """Express the seam set in split-vertex indices.
+
+    The stride has to be the one the keys were packed with. Packing each side
+    with its own stride makes every comparison miss, which is how a mesh that
+    owns a loose vertex silently loses its entire seam set.
+    """
+    if seam_keys.size == 0 or faces.size == 0:
         return np.zeros((0, 2), dtype=np.int64)
 
     left = faces[:, [0, 1, 2]].ravel()
     right = faces[:, [1, 2, 0]].ravel()
     source_left = source_vertex[left]
     source_right = source_vertex[right]
-    canonical = np.minimum(source_left, source_right)
-    other = np.maximum(source_left, source_right)
-
-    wanted = sorted(seam_pairs)
-    lookup = {pair: index for index, pair in enumerate(wanted)}
-    is_seam = np.array(
-        [pair in lookup for pair in zip(canonical.tolist(), other.tolist())]
+    candidate = _pair_keys(
+        np.minimum(source_left, source_right),
+        np.maximum(source_left, source_right),
+        stride,
     )
+    is_seam = np.isin(candidate, seam_keys)
     if not is_seam.any():
         return np.zeros((0, 2), dtype=np.int64)
 
@@ -225,13 +251,14 @@ def take_snapshot(obj, uv_name: str = BSCU_UV_NAME) -> MeshSnapshot:
         kind = "None" if obj is None else obj.type
         raise ValueError(f"Snapshot needs a Mesh object, got {kind}")
 
+    mesh = obj.data
     verts_mm, uv, faces, source_vertex = _split_corners(obj, uv_name)
     return MeshSnapshot(
         verts_mm=verts_mm,
         uv=uv,
         faces=faces,
         seam_edges=_seam_split_edges(
-            faces, source_vertex, _seam_vertices(obj.data)
+            faces, source_vertex, _seam_keys(mesh), len(mesh.vertices) + 1
         ),
-        source_faces=_source_faces(obj.data),
+        source_faces=_source_faces(mesh),
     )

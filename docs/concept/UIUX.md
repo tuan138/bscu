@@ -671,7 +671,7 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 | **UX-1** | Toán UV và topology sau mở | `core/uv_metrics.py`, `core/uv_islands.py`, `bridge/snapshot.py` | Ca đo và topology tại mục 2.7/3.7, không dùng luật mọi đầu seam đều lỗi | **Xong** — 43 unit + 12 integration headless PASS; đo thật trên GUI: hình cầu 120 mm, $\rho^*$=0.003477 UV/mm (lý thuyết 0.003341), RMS $D$=0.207, 0 mặt lật, 0 suy biến |
 | **UX-2** | Cầu nối, job revision, kho thiết kế | `core/ids.py`, `core/jobs.py`, `bridge/design_store.py`, `bridge/job_runner.py`, `properties/design_props.py` | Kiểm chứng D1/K2/K3: hủy/Undo/load không áp kết quả cũ; ID không tái dùng qua Undo; đo chặn UI của API Blender | **Xong** — 106 unit + 7 suite integration headless PASS. Đo D1: unwrap của Blender chặn main thread 46 ms ở 36 864 tam giác (1.26 µs/tam giác), vượt ngân sách khung hình 16 ms từ ~12 700 tam giác; snapshot 13.1 ms ở 9 216 tam giác |
 | **UX-3** | Phôi, vùng trang trí và overlay Caro | `bridge/checker_overlay.py`, `bridge/region.py`, `properties/design_props.py`, `src/bscu/__init__.py` | Mục 2.7; bảo toàn vật liệu/đơn vị/vùng; bật/tắt Caro trả nguyên trạng thái (D2) | **Xong** — 106 unit + 10 suite integration headless PASS; GUI: overlay OBJECT-linked thêm rồi gỡ đúng 1 slot, vùng WHOLE 512/512 mặt, handler undo/load không tích tụ |
-| **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định | Chưa làm |
+| **UX-4** | Auto-Seam dùng pipeline chung | `core/seam_graph.py`, `operators/op_auto_seam.py` | Ứng viên được kiểm tra thật; không mặc định mọi sphere đạt RMS cố định | **Đang làm** — `core/seam_graph.py` xong (Normal, Merge, cổng méo), kiểm trên mô hình người tuyết; còn thiếu solver (UX-5) để cổng méo có ý nghĩa |
 | **UX-5** | Tab 2: Chỉ dẫn cọ Caro + dàn đều | `operators/op_caro_brush.py`, `core/uv_hints.py`, `core/lscm.py` (trọng số) | Mục 3B.7; chỉ dẫn áp lại sau sửa seam; $F$/$Shift+F$/$Shift$; $\ge 30$ fps | Chưa làm |
 | **UX-6** | Tab 1: 4 công cụ Seam | `operators/op_seam_*.py`, `core/uv_islands.py` | Validator đúng 100% trên bộ ca nhân tạo | Chưa làm |
 | **UX-7** | Tab 1: Two-Tier Preview + xem nhanh Caro | `core/unwrap_solver.py`, `draw/seam_overlay.py` | $10$ Hz khi kéo, không khóa UI, cache đúng island | Chưa làm |
@@ -717,6 +717,16 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 - **Overlay từ chối thay đổi khi không có dữ liệu hợp lệ** và trả về `False` chứ không ném lỗi: thiếu `BSCU_UV_Active` hoặc không phải Mesh thì bật/tắt là no-op.
 - **Vùng trang trí lưu chỉ số mặt trên chính object** nên sống trong `.blend`, qua Undo và qua save/load. Chọn mặt rỗng là **lỗi**, không phải cơ hội âm thầm mở rộng ra toàn phôi (mục 2.7).
 - **Handler undo/redo/load phải đăng ký idempotent.** Một module nạp lại là một đối tượng hàm khác, nên phải dọn handler cũ theo `__name__` trước khi thêm; nếu không sẽ tích tụ và mỗi sự kiện gọi nhiều lần. Handler cũng phải nhận `*args` vì Blender truyền số tham số khác nhau cho undo/redo/load.
+
+**Quyết định vận hành của UX-4 (tra cứu thuật toán ngành, không phải phỏng đoán):**
+
+- **Nguồn thuật toán.** PartUV, *Part-Based UV Unwrapping of 3D Meshes*, SIGGRAPH Asia 2025, mục 3.4. Bài báo phê phán đúng thứ xatlas và Blender Smart UV Project đang làm: phình chart từ dưới lên bằng pháp tuyến tạo ra bản trải vỡ vụn.
+- **Normal:** phân cụm pháp tuyến mặt thành chart gồm các mặt liên thông có pháp tuyến giống nhau. Triển khai dạng *binning theo độ phân giải rồi lấy thành phần liên thông từng nhãn* vì phân cụm linkage đầy đủ có $O(n^2)$ — không chịu nổi trong ngân sách preview 10 Hz ở 200k tam giác.
+- **Merge:** gán nhãn 1–6 theo pháp tuyến OBB có dấu, lấy thành phần liên thông, rồi hợp nhất từ nhỏ lên với điều kiện không gập quá ngưỡng trải.
+- **Cổng méo** (công thức 3–4 của bài báo): $\text{stretch}(f)=\dfrac{A_{2D}(f)/A_{3D}(f)}{\text{mean}_{C}\left(A_{2D}/A_{3D}\right)}$, distortion = max trên chart của mean $\max(\text{stretch}, 1/\text{stretch})$, báo cáo dư ra trên 1 nên chart hoàn hảo được 0 — cùng quy ước tương đối với mật độ ở mục 2.3.
+- **Giới hạn đã đo, không phải phỏng đoán:** trên người tuyết (vật thể đối xứng cầu, không có mảng phẳng nào), clustering theo pháp tuyến cho **239 chart** dù xin 6; Merge đưa xuống còn **51**. Đây chính là lý do dụng cụ chuyên nghiệp dùng **tìm kiếm top-down với cổng méo** chứ không tin một heuristic hình học. Phần tìm kiếm đó thuộc UX-5/UX-8 và chưa có.
+- **Mô hình kiểm thử:** `tests/fixtures/snowman.blend`, dựng bằng `scripts/make_snowman.py` từ 4 hình cầu hợp nhất bằng metaball (48,2 × 48,2 × 152,8 mm, 7 444 tam giác, 0 cạnh biên, 0 non-manifold). Script tự kiểm watertight và **fail nếu không kín**.
+- **Lỗi bridge do mô hình này phát hiện:** khóa đóng gói cạnh seam phải dùng **cùng một stride ở cả hai vế**. Đóng gói mỗi vế bằng stride riêng khiến mọi phép so trượt, và một mesh có đỉnh rời sẽ **âm thầm mất toàn bộ tập seam**.
 
 ---
 
