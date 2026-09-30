@@ -93,7 +93,7 @@ def _document_scale(root, result: SvgResult) -> Tuple[float, np.ndarray]:
             box_height = parts[3] or 1.0
             scale_x = (width / box_width) if width else 1.0 / PX_PER_MM
             scale_y = (height / box_height) if height else 1.0 / PX_PER_MM
-            scale = min(scale_x, scale_y) or PX_PER_MM
+            scale = min(scale_x, scale_y) or 1.0 / PX_PER_MM
             offset = np.array([-parts[0] * scale, -parts[1] * scale])
             result.width_mm = box_width * scale
             result.height_mm = box_height * scale
@@ -102,22 +102,21 @@ def _document_scale(root, result: SvgResult) -> Tuple[float, np.ndarray]:
     if not width or not height:
         result.issues.append("UNITS_MISSING: the file states no size, so it "
                              "was read at 96 pixels per inch")
-    # Without a viewBox, a user unit is a pixel by the letter of the format.
-    # When the document states an absolute size, though, a CAD export means its
-    # own units by that size, and reading it as pixels would shrink a 100 mm
-    # plate to 26 mm with nothing on screen to say so. Absolute units are taken
-    # at their word; a bare number is a pixel, which is what the format says.
-    scale = 0.0
+    # Without a viewBox the user coordinate system is the viewport in pixels,
+    # and that is the only reading the format supports. The stated absolute
+    # size is the *document's* size, not its user units: a file saying
+    # width="4in" is 101.6 mm across, but a path of one unit is one pixel,
+    # 0.2646 mm. Reading it as an inch would guess at how far the drawing
+    # spans, and a wrong guess here cuts the part 25 times too big with
+    # nothing on screen to notice.
     if _states_absolute(root):
-        scale = 1.0
         result.issues.append(
-            "UNITS_INFERRED: the file gives no viewBox but states an absolute "
-            "size, so one user unit is read as one of those units")
-    else:
-        scale = 1.0 / PX_PER_MM
+            f"UNITS_INFERRED: the file gives no viewBox, so one user unit is "
+            f"read as one pixel at {PX_PER_INCH:g} per inch; how far the "
+            f"drawing actually spans cannot be confirmed from the file alone")
     result.width_mm = width or 0.0
     result.height_mm = height or 0.0
-    return scale, np.zeros(2)
+    return 1.0 / PX_PER_MM, np.zeros(2)
 
 
 def _states_absolute(root) -> bool:
@@ -259,6 +258,10 @@ def _flatten_path(data: str, scale: float, offset: np.ndarray) -> np.ndarray:
         current = np.asarray(step, dtype=np.float64)
         if upper == "M":
             start = current.copy()
+            # Further pairs after a move are implicit lines, per the format.
+            # Treating them as more moves would send a later Z to the wrong
+            # point and quietly change the shape of a closed outline.
+            command = "L" if command in ("M", "m") else command
     return np.asarray(points, dtype=np.float64).reshape(-1, 2)
 
 

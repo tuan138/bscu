@@ -12,6 +12,8 @@ still one undo step to move, and deleting a copy never touches the original.
 """
 
 import os
+import uuid
+from typing import Tuple
 
 import bpy
 import numpy as np
@@ -19,7 +21,7 @@ import numpy as np
 from ..core.dxf_import import DxfError, parse_dxf
 from ..core.geom2d import Arc, Line
 from ..core.svg_import import parse_svg
-from ..draw import canvas_2d
+from ..draw.batches import ARC_STEPS
 from ..registry import register_classes, unregister_classes
 
 #: The formats the spec asks for, by the extension the user picked.
@@ -33,8 +35,8 @@ class ImportResult:
     """What an import produced, and what it would not do."""
 
     def __init__(self, shapes: list, issues: list, layer: str):
-        self.shapes = shapes
-        self.issues = issues
+        self.shapes = list(shapes)
+        self.issues = list(issues)
         self.layer = layer
 
     @property
@@ -56,6 +58,9 @@ def read_file(path: str, layer: str = "layer-0") -> ImportResult:
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         text = handle.read()
     result = parse_dxf(text) if reader == "dxf" else parse_svg(text)
+    # Parsed once. The earlier version read the file twice and returned the
+    # reader's empty shape list rather than a result when a file held no
+    # geometry, so the caller crashed on it and the reader's reasons were lost.
     return ImportResult(_geometry_of(result), list(result.issues), layer)
 
 
@@ -105,7 +110,10 @@ class BSCU_OT_ImportVector(bpy.types.Operator):
             return {"CANCELLED"}
 
         canvas = op_draw.canvas_for(context)
-        name = f"{os.path.splitext(os.path.basename(self.filepath))[0]}"
+        stem = os.path.splitext(os.path.basename(self.filepath))[0]
+        # Suffixed, because importing the same file twice would otherwise land
+        # the second import on top of the first and lose it.
+        name = stem if stem not in canvas.strokes else f"{stem}-{uuid.uuid4().hex[:4]}"
         canvas.add_stroke(name, geometry)
         op_draw._persist(context.scene, canvas)
         self.report({"INFO"}, f"{name}: {len(geometry)} piece(s)")
@@ -128,22 +136,50 @@ def template_collection(context):
 def make_template(context, name: str, strokes: dict) -> bpy.types.Object:
     """A reusable symbol built from a copy of the given strokes.
 
-    A copy, deliberately: a template placed ten times is still one template, and
-    deleting a placed copy must never reach back into the original.
+    The geometry is built from the strokes, not merely declared: a template with
+    an empty mesh and every instance empty with it is a feature that looks like
+    it works until someone places one.
     """
-    canvas = canvas_2d.Canvas()
-    for stroke_name, shapes in strokes.items():
-        canvas.add_stroke(stroke_name, list(shapes))
-
+    points, edges = _stroke_geometry(strokes)
     mesh = bpy.data.meshes.new(name)
+    if points and edges:
+        mesh.from_pydata([tuple(point) for point in points], edges, [])
+        mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     template_collection(context).objects.link(obj)
     obj["bscu_template"] = len(strokes)
     return obj
 
 
+def _stroke_geometry(strokes: dict) -> Tuple[list, list]:
+    """The canvas strokes as a vertex and edge list, in metres.
+
+    Millimetres in, metres out, because an object's geometry lives in the
+    scene's units and a template a thousand times too big is the symptom.
+    """
+    points: list = []
+    edges: list = []
+    for shapes in strokes.values():
+        for shape in shapes:
+            if isinstance(shape, Arc):
+                run = shape.sample(ARC_STEPS)
+            else:
+                run = np.asarray([shape.start, shape.end], dtype=np.float64)
+            first = len(points)
+            for point in run:
+                points.append((float(point[0]) / 1000.0, float(point[1]) / 1000.0, 0.0))
+            for index in range(len(run) - 1):
+                edges.append((first + index, first + index + 1))
+    return points, edges
+
+
 def instances_of(template) -> list:
-    """The placed copies of a template, which share its data but not its edits."""
+    """The placed copies of a template.
+
+    They share the template's mesh on purpose: the spec wants a copy of a lens
+    or a rosette to cost nothing but its transform, and editing one to change
+    all of them is the behaviour a linked copy gives.
+    """
     return [obj for obj in bpy.data.objects
             if obj.type == "MESH" and obj.data is template.data
             and obj is not template]
@@ -156,7 +192,8 @@ def place_instance(template, location=(0.0, 0.0, 0.0)) -> bpy.types.Object:
     nothing but its transform, and editing one of them to change all of them is
     the behaviour a linked copy gives.
     """
-    copy = bpy.data.objects.new(f"{template.name}_instance", template.data)
+    copy = bpy.data.objects.new(f"{template.name}_instance_{uuid.uuid4().hex[:8]}",
+                                template.data)
     for collection in template.users_collection:
         collection.objects.link(copy)
     copy.location = location

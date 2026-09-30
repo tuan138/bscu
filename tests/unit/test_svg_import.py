@@ -9,6 +9,8 @@ taking priority over any assumption.
 
 import unittest
 
+import numpy as np
+
 from bscu.core.svg_import import PX_PER_MM, parse_svg
 
 
@@ -56,13 +58,33 @@ class TestUnits(unittest.TestCase):
 
         self.assertAlmostEqual(result.shapes[0]["length_mm"], 25.4)
 
-    def test_an_absolute_size_is_taken_at_its_word_and_says_so(self):
-        """A 100 mm plate read as pixels would be 26 mm with nothing to show it."""
+    def test_a_view_box_is_what_makes_user_units_mean_something(self):
+        """Without one they are pixels, and the file says so rather than guessing."""
         result = parse_svg(svg('<path d="M0 0 L50 0"/>', width="100mm",
-                               height="50mm"))
+                               height="50mm", viewBox="0 0 100 50"))
 
         self.assertAlmostEqual(result.shapes[0]["length_mm"], 50.0)
-        self.assertTrue(any("UNITS_INFERRED" in issue for issue in result.issues))
+
+    def test_pairs_after_a_move_are_implicit_lines(self):
+        """Otherwise a later Z closes to the wrong point and the shape changes."""
+        result = parse_svg(svg('<path d="M0 0 10 0 10 10 Z"/>', width="100mm",
+                               height="100mm", viewBox="0 0 100 100"))
+
+        points = result.shapes[0]["points"]
+        # Three corners plus the point Z returns to.
+        self.assertEqual(points.shape, (4, 2))
+        self.assertTrue(np.allclose(points[1], [10.0, 0.0]))
+        self.assertTrue(np.allclose(points[2], [10.0, 10.0]))
+        self.assertTrue(np.allclose(points[3], [0.0, 0.0]))
+
+    def test_an_inch_document_without_a_view_box_still_reads_in_pixels(self):
+        """The document is 101.6 mm across; one unit is still 0.2646 mm."""
+        result = parse_svg(svg('<path d="M0 0 L1 0"/>', width="4in", height="1in"))
+
+        self.assertAlmostEqual(result.width_mm, 101.6)
+        self.assertAlmostEqual(result.shapes[0]["length_mm"], 1.0 / (96.0 / 25.4))
+        self.assertTrue(any("no viewBox" in issue for issue in result.issues),
+                        result.issues)
 
     def test_a_view_box_with_the_wrong_number_of_values_is_reported(self):
         result = parse_svg(svg("", viewBox="0 0 100"))
