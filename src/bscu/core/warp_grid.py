@@ -254,14 +254,16 @@ def _meetings(first: WarpLine, second: WarpLine) -> List[Tuple[float, float]]:
             if hit is not None and not _already(found, hit):
                 found.append(hit)
 
-    # A line drawn as a single point still meets another line passing through
-    # it, and a degenerate segment in either line still has to be considered.
+    # A line drawn as a single point, or with a repeated point in it, still
+    # meets another line passing through it. The point has to be near *both*
+    # lines: testing it against the line it came from is always true, and that
+    # would make a one-point line meet every line on the canvas.
     for point in _degenerate_points(first) + _degenerate_points(second):
-        for line, other in ((first, second), (second, first)):
-            if line is not other and float(line.distance_to(
-                    np.asarray([point], dtype=np.float64))[0]) <= JOIN_TOLERANCE_MM:
-                if not _already(found, point):
-                    found.append((float(point[0]), float(point[1])))
+        probe = np.asarray([point], dtype=np.float64)
+        near_first = float(first.distance_to(probe)[0]) <= JOIN_TOLERANCE_MM
+        near_second = float(second.distance_to(probe)[0]) <= JOIN_TOLERANCE_MM
+        if near_first and near_second and not _already(found, point):
+            found.append((float(point[0]), float(point[1])))
     return found
 
 

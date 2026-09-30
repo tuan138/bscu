@@ -5,9 +5,9 @@ The groups are built on first use rather than at register time, because
 Blender restricts ``bpy.data`` during parts of enable and load.
 """
 
-from . import relief_displace  # noqa: F401
+from . import overlay_material, relief_displace  # noqa: F401
 
-MODULES = (relief_displace,)
+MODULES = (relief_displace, overlay_material)
 
 
 def register():
@@ -16,8 +16,10 @@ def register():
 
 def unregister():
     relief_displace.clear_all()
+    overlay_material.clear_all()
 
 
 def shutdown():
     """Called by the bridge on undo, redo and file load."""
     relief_displace.clear_all()
+    overlay_material.clear_all()

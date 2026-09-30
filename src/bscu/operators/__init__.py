@@ -5,6 +5,7 @@ Operators package for BSCU.
 from . import (
     op_cad,
     op_canvas_mode,
+    op_caro_brush,
     op_draw,
     op_export,
     op_import_vector,
@@ -14,7 +15,7 @@ from . import (
     op_uv_apply,
 )
 
-MODULES = (op_reload, op_seam, op_uv_apply, op_export, op_draw,
+MODULES = (op_reload, op_seam, op_uv_apply, op_caro_brush, op_export, op_draw,
            op_cad, op_import_vector, op_template, op_canvas_mode)
 
 

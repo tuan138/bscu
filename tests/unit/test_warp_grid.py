@@ -79,9 +79,31 @@ class TestSharedNodes(unittest.TestCase):
         self.assertEqual(set(nodes[0].lines), {"a", "b", "c"})
 
     def test_a_line_kept_entirely_outside_a_chart_meets_nothing(self):
-        grid = WarpGrid([line("a", [(0, 0), (1, 0)], [0.0])])
+        grid = WarpGrid([line("a", [(0, 0), (1, 0)], [0.0, 0.0])])
 
         self.assertEqual(grid.shared_nodes(), [])
+
+    def test_a_one_point_line_does_not_meet_every_line_on_the_canvas(self):
+        """A point is only a meeting where another line actually passes."""
+        grid = WarpGrid([
+            WarpLine("dot", [(3.0, 3.0)], [1.0]),
+            line("a", [(0, 0), (10, 0)], [0.0, 0.0]),
+            line("b", [(0, 9), (10, 9)], [0.0, 0.0]),
+        ])
+
+        self.assertEqual(grid.shared_nodes(), [],
+                         "a lone point claimed meetings it was not part of")
+
+    def test_a_one_point_line_on_another_line_is_a_meeting(self):
+        grid = WarpGrid([
+            WarpLine("dot", [(5.0, 0.0)], [1.0]),
+            line("a", [(0, 0), (10, 0)], [0.0, 0.0]),
+        ])
+
+        nodes = grid.shared_nodes()
+
+        self.assertEqual(len(nodes), 1)
+        self.assertEqual(set(nodes[0].lines), {"a", "dot"})
 
 
 class TestInfluence(unittest.TestCase):
