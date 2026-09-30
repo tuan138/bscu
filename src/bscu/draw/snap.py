@@ -19,7 +19,7 @@ from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
-from bscu.core.overlay_links import Link, anchor, intersection, on_curve
+from ..core.overlay_links import Link, anchor, intersection, on_curve
 
 #: The snap kinds the canvas offers, in the order they win a tie.
 KINDS = ("endpoint", "midpoint", "on_curve", "intersection", "groove_edge")
@@ -44,7 +44,7 @@ class SnapHit:
     def link(self) -> Link:
         """The link this snap would create, held by ID rather than by position."""
         if self.kind == "midpoint":
-            from bscu.core.overlay_links import midpoint
+            from ..core.overlay_links import midpoint
 
             return midpoint(self.path_id, self.segment)
         if self.kind == "intersection":

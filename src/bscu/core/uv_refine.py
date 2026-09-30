@@ -20,9 +20,9 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from bscu.core.math_utils import plane_frame
-from bscu.core.seam_graph import chart_distortion, face_adjacency
-from bscu.core.uv_islands import edge_face_counts
+from .math_utils import plane_frame
+from .seam_graph import chart_distortion, face_adjacency
+from .uv_islands import edge_face_counts
 
 #: Packing works in the unit square, the usual UV address space.
 UNIT_SIZE = 1.0

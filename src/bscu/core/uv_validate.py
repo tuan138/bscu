@@ -23,8 +23,8 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from bscu.core.seam_tools import edge_face_counts
-from bscu.core.uv_islands import _face_keys, _sorted_corners
+from .seam_tools import edge_face_counts
+from .uv_islands import _face_keys, _sorted_corners
 
 #: Worst first, so the first match decides the chart's state.
 SEVERITIES = ("error", "warning", "note")

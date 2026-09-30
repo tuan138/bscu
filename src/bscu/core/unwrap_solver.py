@@ -28,9 +28,9 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from bscu.core.lscm import ChartProblem, solve_chart
-from bscu.core.math_utils import plane_frame
-from bscu.core.uv_hints import BrushHints
+from .lscm import ChartProblem, solve_chart
+from .math_utils import plane_frame
+from .uv_hints import BrushHints
 
 
 @dataclass(frozen=True)

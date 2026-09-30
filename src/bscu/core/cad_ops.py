@@ -18,7 +18,7 @@ from typing import Union
 
 import numpy as np
 
-from bscu.core.geom2d import Arc, Line, as_point, unit_span
+from .geom2d import Arc, Line, as_point, unit_span
 
 Shape = Union[Line, Arc]
 

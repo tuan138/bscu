@@ -21,8 +21,8 @@ from typing import Tuple
 
 import numpy as np
 
-from bscu.core.lscm import ChartProblem, solve_chart
-from bscu.core.math_utils import plane_frame
+from .lscm import ChartProblem, solve_chart
+from .math_utils import plane_frame
 
 
 @dataclass(frozen=True)

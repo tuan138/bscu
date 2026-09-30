@@ -26,7 +26,7 @@ from typing import Tuple
 
 import numpy as np
 
-from bscu.core.sparse_cg import CSRMatrix, SolverInfo, solve_spd
+from .sparse_cg import CSRMatrix, SolverInfo, solve_spd
 
 #: Column stride between a vertex's U and V unknown.
 U = 0

@@ -261,7 +261,11 @@ def _flatten_path(data: str, scale: float, offset: np.ndarray) -> np.ndarray:
             # Further pairs after a move are implicit lines, per the format.
             # Treating them as more moves would send a later Z to the wrong
             # point and quietly change the shape of a closed outline.
-            command = "L" if command in ("M", "m") else command
+            # Further pairs after a move are implicit lines, and a move that
+            # was relative makes them relative too: m10 10 5 0 ends at
+            # (15, 10), not at (5, 0).
+            command = ("l" if command == "m" else "L") \
+                if command in ("M", "m") else command
     return np.asarray(points, dtype=np.float64).reshape(-1, 2)
 
 

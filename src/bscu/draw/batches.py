@@ -15,7 +15,7 @@ from typing import List, Sequence, Tuple
 
 import numpy as np
 
-from bscu.core.geom2d import Arc, Line
+from ..core.geom2d import Arc, Line
 
 #: How finely an arc is sampled. Chosen so a quarter circle of a 100 mm part
 #: comes out smooth without pushing thousands of points at the GPU.

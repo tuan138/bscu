@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from bscu.draw.batches import COLOUR, WIDTH_PX, CanvasBatch, from_shapes
+from .batches import COLOUR, WIDTH_PX, CanvasBatch, from_shapes
 
 MM_PER_METRE = 1000.0
 

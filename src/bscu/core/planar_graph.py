@@ -22,7 +22,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from bscu.core.geom2d import Arc, Line
+from .geom2d import Arc, Line
 
 #: How close two endpoints have to be to be the same point, in millimetres.
 DEFAULT_TOLERANCE_MM = 1e-6

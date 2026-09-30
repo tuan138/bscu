@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from bscu.core.height_field import HeightField
+from ..core.height_field import HeightField
 
 MM_PER_METRE = 1000.0
 

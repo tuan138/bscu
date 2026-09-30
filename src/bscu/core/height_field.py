@@ -22,8 +22,8 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from bscu.core.profile_curves import Profile, vee
-from bscu.core.sdf import Polygon, smooth_union
+from .profile_curves import Profile, vee
+from .sdf import Polygon, smooth_union
 
 #: A face thinner than this is treated as gone; below it the numbers are noise.
 MIN_WALL_MM = 0.0

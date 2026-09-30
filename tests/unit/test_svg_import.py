@@ -77,6 +77,15 @@ class TestUnits(unittest.TestCase):
         self.assertTrue(np.allclose(points[2], [10.0, 10.0]))
         self.assertTrue(np.allclose(points[3], [0.0, 0.0]))
 
+    def test_a_relative_move_makes_the_rest_relative_too(self):
+        """m10 10 5 0 ends at (15, 10); an absolute reading would give (5, 0)."""
+        result = parse_svg(svg('<path d="m10 10 5 0"/>', width="100mm",
+                               height="100mm", viewBox="0 0 100 100"))
+
+        points = result.shapes[0]["points"]
+        self.assertTrue(np.allclose(points[0], [10.0, 10.0]))
+        self.assertTrue(np.allclose(points[1], [15.0, 10.0]))
+
     def test_an_inch_document_without_a_view_box_still_reads_in_pixels(self):
         """The document is 101.6 mm across; one unit is still 0.2646 mm."""
         result = parse_svg(svg('<path d="M0 0 L1 0"/>', width="4in", height="1in"))
