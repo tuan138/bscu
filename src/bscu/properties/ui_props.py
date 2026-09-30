@@ -32,9 +32,15 @@ CLASSES = (BSCU_PG_ui,)
 def register():
     register_classes(CLASSES)
     bpy.types.WindowManager.bscu_ui = bpy.props.PointerProperty(type=BSCU_PG_ui)
+    # A view state, not document state: kept on the window so that
+    # looking at a part from above is not an undo step.
+    bpy.types.WindowManager.bscu_canvas_mode = bpy.props.BoolProperty(
+        name="Canvas Mode", default=True,
+        description="Draw the BSCU canvas in this window")
 
 
 def unregister():
     unregister_classes(CLASSES)
-    if hasattr(bpy.types.WindowManager, "bscu_ui"):
-        del bpy.types.WindowManager.bscu_ui
+    for name in ("bscu_ui", "bscu_canvas_mode"):
+        if hasattr(bpy.types.WindowManager, name):
+            delattr(bpy.types.WindowManager, name)

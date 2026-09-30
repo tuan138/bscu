@@ -17,7 +17,6 @@ import json
 import bpy
 import numpy as np
 
-from ..core.cad_ops import chamfer_corner, extend_line, fillet_corner, trim_line
 from ..core.geom2d import Arc, Line
 from ..draw import canvas_2d, snap
 from ..registry import register_classes, unregister_classes
@@ -127,69 +126,6 @@ class BSCU_OT_DrawLine(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BSCU_OT_Corner(bpy.types.Operator):
-    """Round or cut back a corner on the canvas"""
-
-    bl_idname = "bscu.corner"
-    bl_label = "Corner"
-    bl_options = {"REGISTER", "UNDO"}
-
-    before_start: bpy.props.FloatVectorProperty(name="Before Start", size=2)
-    before_end: bpy.props.FloatVectorProperty(name="Before End", size=2)
-    after_start: bpy.props.FloatVectorProperty(name="After Start", size=2)
-    after_end: bpy.props.FloatVectorProperty(name="After End", size=2)
-    radius_mm: bpy.props.FloatProperty(name="Radius", default=1.0, min=0.0)
-    fillet: bpy.props.BoolProperty(name="Round", default=True)
-
-    def execute(self, context):
-        canvas = canvas_for(context)
-        before = Line(self.before_start, self.before_end)
-        after = Line(self.after_start, self.after_end)
-        corner = np.asarray(self.before_end, dtype=np.float64)
-        try:
-            result = (fillet_corner(before, after, corner, self.radius_mm)
-                      if self.fillet
-                      else chamfer_corner(before, after, corner, self.radius_mm))
-        except ValueError as problem:
-            self.report({"ERROR"}, str(problem))
-            return {"CANCELLED"}
-
-        # All three pieces replace together, so one undo takes the whole corner
-        # back rather than leaving a half-finished one behind.
-        name = f"corner-{len(canvas.strokes) + 1:04d}"
-        canvas.add_stroke(name, list(result.pieces()))
-        _persist(context.scene, canvas)
-        return {"FINISHED"}
-
-
-class BSCU_OT_EditLine(bpy.types.Operator):
-    """Trim or extend a run on the canvas"""
-
-    bl_idname = "bscu.edit_line"
-    bl_label = "Trim or Extend"
-    bl_options = {"REGISTER", "UNDO"}
-
-    start_mm: bpy.props.FloatVectorProperty(name="Start", size=2)
-    end_mm: bpy.props.FloatVectorProperty(name="End", size=2)
-    trim_to_mm: bpy.props.FloatVectorProperty(name="Trim To", size=2)
-    extend_mm: bpy.props.FloatProperty(name="Extend", default=0.0)
-    do_trim: bpy.props.BoolProperty(name="Trim", default=True)
-
-    def execute(self, context):
-        canvas = canvas_for(context)
-        line = Line(self.start_mm, self.end_mm)
-        try:
-            edited = (trim_line(line, self.trim_to_mm) if self.do_trim
-                      else extend_line(line, end_distance=self.extend_mm))
-        except ValueError as problem:
-            self.report({"ERROR"}, str(problem))
-            return {"CANCELLED"}
-        name = f"line-{len(canvas.strokes) + 1:04d}"
-        canvas.add_stroke(name, [edited])
-        _persist(context.scene, canvas)
-        return {"FINISHED"}
-
-
 class BSCU_OT_CanvasVisibility(bpy.types.Operator):
     """Hide or show a stroke, without taking it off the canvas"""
 
@@ -248,8 +184,8 @@ def _paths_of(context) -> dict:
     return found
 
 
-CLASSES = (BSCU_OT_DrawLine, BSCU_OT_Corner, BSCU_OT_EditLine,
-           BSCU_OT_CanvasVisibility, BSCU_OT_RemoveStroke)
+CLASSES = (BSCU_OT_DrawLine, BSCU_OT_CanvasVisibility,
+           BSCU_OT_RemoveStroke)
 
 
 def register():

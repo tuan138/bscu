@@ -74,6 +74,28 @@ class TestInspectorPanel(unittest.TestCase):
         self.assertTrue(recorder.says("Strokes: 1"))
 
 
+class _FakeRegion:
+    def __init__(self, space):
+        self.active = space
+
+
+class _FakeSpace:
+    def __init__(self):
+        self.region_3d = _FakeRegion3D()
+
+
+class _FakeRegion3D:
+    def __init__(self):
+        self.view_perspective = "PERSP"
+        self.view_rotation = (0.0, 0.0, 0.0, 1.0)
+
+
+class _FakeArea:
+    def __init__(self, space):
+        self.spaces = _FakeRegion(space)
+        self.type = "VIEW_3D"
+
+
 class TestCanvasMode(unittest.TestCase):
     def setUp(self):
         self.obj = fresh_scene()
@@ -91,6 +113,27 @@ class TestCanvasMode(unittest.TestCase):
         bpy.ops.bscu.canvas_mode(active=False)
 
         self.assertFalse(op_canvas_mode.is_on(bpy.context))
+
+    def test_the_mode_is_kept_on_the_window_not_the_document(self):
+        """A view state is not an edit, and must not become an undo step."""
+        bpy.ops.bscu.canvas_mode(active=False)
+
+        self.assertNotIn("bscu_canvas_mode", bpy.context.scene.keys())
+        self.assertFalse(op_canvas_mode.is_on(bpy.context))
+
+    def test_turning_the_canvas_on_asks_for_top_orthographic(self):
+        """Drawing in perspective puts a stroke where the cursor is."""
+        space = _FakeSpace()
+        area = _FakeArea(space)
+
+        moved = op_canvas_mode.enter_canvas_view(area)
+
+        self.assertTrue(moved)
+        self.assertEqual(space.region_3d.view_perspective, "ORTHO")
+
+    def test_entering_the_view_says_so_when_there_is_no_view(self):
+        """A background run has no region; saying so beats pretending."""
+        self.assertFalse(op_canvas_mode.enter_canvas_view(_FakeArea(None)))
 
     def test_turning_it_off_does_not_delete_the_drawing(self):
         """Hiding is a viewing act, and must not cost the user an Undo step."""

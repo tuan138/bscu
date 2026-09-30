@@ -77,7 +77,7 @@ class BSCU_PT_CanvasInspector(bpy.types.Panel):
     bl_category = "BSCU"
 
     def draw(self, context):
-        from ..operators import op_export
+        from . import panel_export
 
         layout = self.layout
         from ..operators import op_canvas_mode
@@ -87,7 +87,7 @@ class BSCU_PT_CanvasInspector(bpy.types.Panel):
                         else "Canvas Off",
                         icon="GREASEPENCIL").active = not op_canvas_mode.is_on(context)
         draw_panel(layout, context)
-        op_export.draw_panel(layout, context)
+        panel_export.draw_panel(layout, context)
 
 
 def _link_summary(context) -> str:

@@ -2,9 +2,10 @@
 UI package for BSCU. Each panel module registers itself; nothing is listed here.
 """
 
-from . import panel_downstream, panel_inspector, panel_steps, panel_stock
+from . import panel_downstream, panel_export, panel_inspector, panel_steps, panel_stock
 
-MODULES = (panel_steps, panel_stock, panel_downstream, panel_inspector)
+MODULES = (panel_steps, panel_stock, panel_downstream, panel_export,
+           panel_inspector)
 
 
 def register():

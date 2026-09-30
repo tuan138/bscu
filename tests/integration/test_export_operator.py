@@ -16,6 +16,8 @@ sys.path.insert(0, HERE)
 import bpy  # noqa: E402
 from bscu_fixtures import blank_canvas, fresh_scene, run_suite  # noqa: E402
 
+from bscu.ui import panel_export  # noqa: E402
+
 
 class TestExportOperator(unittest.TestCase):
     def setUp(self):
@@ -30,6 +32,31 @@ class TestExportOperator(unittest.TestCase):
         name = self.obj.name
         if name in bpy.data.objects:
             bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
+
+    def test_a_check_never_opens_a_file_browser(self):
+        """The panel's Check button writes nothing, so it must ask for no path."""
+        bpy.ops.mesh.primitive_cube_add(size=0.02)
+        cube = bpy.context.active_object
+        bpy.context.view_layer.objects.active = cube
+
+        result = bpy.ops.bscu.export_stl(check_only=True)
+
+        self.assertEqual(result, {"FINISHED"})
+        if cube.name in bpy.data.objects:
+            bpy.data.objects.remove(bpy.data.objects[cube.name], do_unlink=True)
+
+    def test_the_report_is_cached_so_a_redraw_does_not_recheck(self):
+        """A redraw happens on every mouse move; the checks are not that cheap."""
+        bpy.ops.mesh.primitive_cube_add(size=0.02)
+        cube = bpy.context.active_object
+        bpy.context.view_layer.objects.active = cube
+        first = panel_export.report_for(bpy.context, refresh=True)
+
+        second = panel_export.report_for(bpy.context)
+
+        self.assertIs(first, second)
+        if cube.name in bpy.data.objects:
+            bpy.data.objects.remove(bpy.data.objects[cube.name], do_unlink=True)
 
     def test_checking_a_good_solid_finishes(self):
         bpy.ops.mesh.primitive_cube_add(size=0.02)

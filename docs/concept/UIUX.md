@@ -709,7 +709,8 @@ Lộ trình thiết kế, không phải báo cáo triển khai: UX-9a (canvas t�
 - **`busy` của job runner phải tính cả kết quả chưa được poll.** Nếu chỉ nhìn trạng thái thread, một job hoàn tất trước vòng kiểm tra đầu tiên sẽ không bao giờ được áp dụng.
 - **Đo D1 trên main thread thật (Blender 5.2.2):** `uv.smart_project` chặn main thread 46 ms ở 36 864 tam giác, tức ~1.26 µs/tam giác. Ngân sách khung hình 16 ms bị vượt từ khoảng **12 700 tam giác**. Kết luận bắt buộc cho UX-7/UX-8: không được coi unwrap của Blender là tác vụ nền; trên bộ ca 200k tam giác bắt buộc chạy solver trên snapshot hoặc tách tiến trình.
 - **Chi phí chụp snapshot đã tối ưu có số liệu:** 13.1 ms ở 9 216 tam giác (1.42 µs/tam giác), ngoại suy 285 ms ở 200k tam giác. Vòng lặp Python theo mặt và dict cạnh là hai nút thắt đã loại bỏ (28 ms → gần 0) bằng argsort trên khóa int64; bản đồ cạnh giờ dựng **lazy** vì phần lớn nơi gọi chỉ cần đếm số mặt mỗi cạnh.
-- **Bộ ca nghiệm thu 200k tam giác của mục 3.7 (10 Hz) hiện chưa đạt với snapshot trên main thread.** Đây là lý do D10 bắt buộc có hai tầng: phần dựng hình thái phải chạy ngoài main thread.
+- **Bộ ca nghiệm thu 200k tam giác của mục 3.7 (10 Hz) KHÔNG ĐẠT.** Đo thật trên chart dạng lõm, bán kính vết 6 mm: 6 962 mặt → giải cục bộ 13,6 ms (73,6 Hz); 28 322 mặt → 384 ms (2,6 Hz); 114 242 mặt → 1 272 ms (0,8 Hz); **229 842 mặt → 2 157 ms (0,5 Hz)**. Giải toàn chart: 202 ms / 667 ms / 2 637 ms / **5 528 ms**. Mục tiêu "kết quả chuẩn 2 giây" chỉ đúng quy mô ~100k mặt. Cần thuật toán khác cho tầng kéo, không phải tối ưu hoá.
+- **Số đo phải kèm mô hình kiểm thử, và phải nói khi nó sai.** Một lần đo cho 21 Hz trên "114k mặt" là do bản vá đặt ở *góc* chart (chỉ ~4 300 mặt) và là lần đo thứ ba sau khi nạp; số thật của ca đó là 1 272 ms. Hai lần chạy cùng một ca 20k cho 2,98 s và 70,8 s do lần đầu nạp BLAS trong tiến trình Blender.
 
 **Quyết định vận hành của UX-5/UX-7/UX-8 (đã code và kiểm chứng bằng số đo):**
 
