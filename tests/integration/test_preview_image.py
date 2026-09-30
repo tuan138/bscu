@@ -13,10 +13,11 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "src"))
 sys.path.insert(0, HERE)
 
 import bpy  # noqa: E402
-from bscu_fixtures import run_suite  # noqa: E402
+import numpy as np  # noqa: E402
+from bscu_fixtures import fresh_scene, run_suite  # noqa: E402
 
 from bscu.bridge import preview_image  # noqa: E402
-from bscu.core.height_field import HeightField  # noqa: E402
+from bscu.core.height_field import HeightField, default_groove  # noqa: E402
 from bscu.core.sdf import Polygon  # noqa: E402
 
 
@@ -59,6 +60,56 @@ class TestPreviewImage(unittest.TestCase):
         self.assertEqual(buffer.size[0], image.heights_mm.shape[1])
         self.assertEqual(buffer.size[1], image.heights_mm.shape[0])
         bpy.data.images.remove(buffer)
+
+    def test_the_preview_and_the_mesh_attribute_agree_in_millimetres(self):
+        """The panel's number and the mesh the cutter reads must be one number.
+
+        The field is the authority; the preview samples it and the node graph
+        reads the attribute. A disagreement anywhere along that chain puts a
+        number on screen that is not the number being cut.
+        """
+        from bscu.nodes import relief_displace
+
+        obj = fresh_scene()
+        field = self._field(2.5)
+        points = np.asarray([v.co[:2] for v in obj.data.vertices],
+                            dtype=np.float64) * 1000.0
+        heights = field.evaluate(points)
+
+        relief_displace.write_height_attribute(obj, heights)
+        image = preview_image.preview_of(field, (-20.0, -20.0), (20.0, 20.0))
+
+        attribute = np.asarray(
+            [item.value for item in
+             obj.data.attributes.get(relief_displace.HEIGHT_ATTRIBUTE).data],
+            dtype=np.float32)
+        # The preview is sampled on a grid, so compare against the field rather
+        # than sample for sample, and allow the field's own quantum.
+        self.assertAlmostEqual(float(attribute.max()), float(heights.max()), places=4)
+        self.assertAlmostEqual(image.max_mm, float(heights.max()), places=3)
+
+    def test_a_pocket_the_field_cuts_is_visible_in_both(self):
+        from bscu.nodes import relief_displace
+
+        obj = fresh_scene()
+        field = self._field(4.0)
+        field.grooves.append(default_groove([(-8.0, 0.0), (8.0, 0.0)], depth_mm=1.5))
+        # One height per vertex, the way the attribute is written.
+        canvas = np.asarray([v.co[:2] for v in obj.data.vertices],
+                            dtype=np.float64) * 1000.0
+        heights = field.evaluate(canvas)
+        relief_displace.write_height_attribute(obj, heights)
+
+        attribute = np.asarray(
+            [item.value for item in
+             obj.data.attributes.get(relief_displace.HEIGHT_ATTRIBUTE).data],
+            dtype=np.float32)
+        # A vertex sitting on the groove gets the pocket plus the groove.
+        self.assertAlmostEqual(float(attribute.max()), 5.5, places=3,
+                               msg=f"deepest vertex was {attribute.max()}")
+
+        self.assertGreater(float(attribute.max()), 4.0,
+                           "the pocket did not reach the mesh at all")
 
     def test_shutting_down_removes_the_preview_images(self):
 

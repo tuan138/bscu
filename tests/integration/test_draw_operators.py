@@ -17,6 +17,7 @@ import bpy  # noqa: E402
 import numpy as np  # noqa: E402
 from bscu_fixtures import blank_canvas, fresh_scene, run_suite  # noqa: E402
 
+from bscu.core.geom2d import Line  # noqa: E402
 from bscu.operators import op_draw  # noqa: E402
 
 
@@ -83,6 +84,39 @@ class TestDrawOperators(unittest.TestCase):
 
     def test_removing_a_stroke_that_is_not_there_says_so(self):
         self.assertEqual(bpy.ops.bscu.remove_stroke(stroke="nope"), {"CANCELLED"})
+
+    def test_a_fillet_comes_back_as_an_arc_after_a_reload(self):
+        """A corner that reloads as two loose lines looks like data loss."""
+        bpy.ops.bscu.corner(before_start=(0, 0), before_end=(10, 0),
+                            after_start=(10, 0), after_end=(10, 10),
+                            radius_mm=2.0, fillet=True)
+        op_draw.forget(bpy.context.scene.name)
+
+        restored = op_draw.canvas_for(bpy.context)
+
+        kinds = {type(shape).__name__ for shapes in restored.strokes.values()
+                 for shape in shapes}
+        self.assertIn("Arc", kinds, f"the fillet came back as {kinds}")
+
+    def test_a_chamfer_comes_back_as_three_straight_pieces(self):
+        bpy.ops.bscu.corner(before_start=(0, 0), before_end=(10, 0),
+                            after_start=(10, 0), after_end=(10, 10),
+                            radius_mm=2.0, fillet=False)
+        op_draw.forget(bpy.context.scene.name)
+
+        restored = op_draw.canvas_for(bpy.context)
+
+        pieces = [shape for shapes in restored.strokes.values() for shape in shapes]
+        self.assertEqual(len(pieces), 3)
+        self.assertTrue(all(isinstance(shape, Line) for shape in pieces))
+
+    def test_a_trimmed_line_lands_where_it_was_asked_to(self):
+        bpy.ops.bscu.edit_line(start_mm=(0, 0), end_mm=(10, 0),
+                               trim_to_mm=(4.0, 0.0), do_trim=True)
+
+        stroke = list(op_draw.canvas_for(bpy.context).strokes.values())[0][0]
+        self.assertTrue(np.allclose(stroke.start, [4.0, 0.0]))
+        self.assertTrue(np.allclose(stroke.end, [10.0, 0.0]))
 
     def test_a_stroke_survives_being_written_out_and_read_back(self):
         bpy.ops.bscu.draw_line(start_mm=(0, 0), to_mm=(10, 0))
