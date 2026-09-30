@@ -178,20 +178,38 @@ def conjugate_gradient(
     iterations: int = 200,
     tolerance: float = 1e-10,
     preconditioner: Optional[Callable] = None,
+    x0: Optional[np.ndarray] = None,
+    stall_window: int = 48,
+    stall_ratio: float = 0.995,
 ) -> tuple:
     """Solve ``matrix @ x = rhs`` by conjugate gradients.
 
     Returns ``(x, SolverInfo)``. A run that does not converge is returned as-is
     with ``converged=False``; the caller decides whether to keep the old answer
     rather than silently using a half-solved one.
+
+    Two things stop this from grinding through every iteration. ``x0`` restarts
+    from a known answer, which is what makes a regularised retry cheap: the
+    shifted matrix is nearly the same one, so the previous solution is nearly
+    right and only a few steps are needed. And ``stall_window`` gives up once
+    the residual has stopped moving, because past that point the remaining
+    iterations cost time without buying accuracy -- the fix is a different
+    matrix, not more passes over this one.
+
+    Both thresholds are deliberately conservative. A clustered spectrum makes
+    the residual sit still for a long time and then fall sharply, so a window
+    that gives up too eagerly trades a real answer for a fast wrong one.
     """
     rhs = np.asarray(rhs, dtype=np.float64).ravel()
     size = rhs.size
     if size == 0:
         return np.zeros(0), SolverInfo(True, 0, 0.0)
 
-    x = np.zeros(size, dtype=np.float64)
-    residual = rhs.copy()
+    x = (np.zeros(size, dtype=np.float64) if x0 is None
+         else np.asarray(x0, dtype=np.float64).ravel().copy())
+    if x.size != size:
+        x = np.zeros(size, dtype=np.float64)
+    residual = rhs - matrix.dot(x)
     initial = float(np.linalg.norm(residual))
     if initial <= tolerance:
         return x, SolverInfo(True, 0, initial)
@@ -200,6 +218,8 @@ def conjugate_gradient(
     direction = z.copy()
     rz = float(residual @ z)
     used = 0
+    window = max(4, int(stall_window))
+    history: list = []
 
     for used in range(1, iterations + 1):
         applied = matrix.dot(direction)
@@ -209,8 +229,14 @@ def conjugate_gradient(
         step = rz / denominator
         x += step * direction
         residual -= step * applied
-        if float(np.linalg.norm(residual)) <= tolerance * max(initial, 1.0):
+        norm = float(np.linalg.norm(residual))
+        if norm <= tolerance * max(initial, 1.0):
             break
+        history.append(norm)
+        if len(history) > window:
+            # No progress across a whole window: stop and let the caller act.
+            if history[-1] >= stall_ratio * history[-window - 1]:
+                break
         z = preconditioner(residual) if preconditioner else residual.copy()
         next_rz = float(residual @ z)
         if rz == 0.0:
@@ -223,35 +249,52 @@ def conjugate_gradient(
 
 
 def _add_diagonal(matrix: CSRMatrix, amount: float) -> CSRMatrix:
-    """A copy of the matrix with ``amount`` added to its diagonal."""
+    """A copy of the matrix with ``amount`` added to its diagonal.
+
+    Done with array arithmetic rather than a Python loop over rows: this runs
+    once per regularisation attempt on systems with hundreds of thousands of
+    unknowns, and a per-row loop there costs more than the iterations it is
+    meant to enable.
+    """
     size = matrix.shape[0]
-    rows: list = []
-    cols: list = []
-    values: list = []
+    rows = np.repeat(np.arange(size, dtype=np.int64),
+                     np.diff(np.asarray(matrix.indptr, dtype=np.int64)))
+    on_diagonal = matrix.indices == rows
+    data = np.array(matrix.data, dtype=np.float64, copy=True)
+    data[on_diagonal] += amount
+
+    if bool(on_diagonal.all()):
+        return CSRMatrix(data=data, indices=matrix.indices,
+                         indptr=matrix.indptr, shape=matrix.shape)
+
+    # A row with no stored diagonal needs one inserted. That is rare enough to
+    # be worth a slower rebuild rather than complicating the fast path above.
+    indptr = np.asarray(matrix.indptr, dtype=np.int64)
+    index_all = matrix.indices
+    data_all = np.array(matrix.data, dtype=np.float64, copy=True)
+    rebuilt_cols: list = []
+    rebuilt_values: list = []
+    counts = np.empty(size, dtype=np.int64)
     for row in range(size):
-        index_cols, data = matrix._row(row) if hasattr(matrix, "_row") else (None, None)
-        del index_cols, data
-        break
-    # Walk the stored rows directly; CSRMatrix.rows() is the public accessor.
-    for row, (row_cols, row_data) in enumerate(matrix.rows()):
-        seen = False
-        for col, value in zip(row_cols, row_data):
-            rows.append(row)
-            cols.append(col)
-            values.append(value + amount if col == row else value)
-            seen = seen or col == row
-        if not seen:
-            rows.append(row)
+        start, stop = int(indptr[row]), int(indptr[row + 1])
+        cols = [int(c) for c in index_all[start:stop]]
+        values = [float(v) for v in data_all[start:stop]]
+        if row in cols:
+            values[cols.index(row)] += amount
+        else:
             cols.append(row)
             values.append(amount)
+        rebuilt_cols.extend(cols)
+        rebuilt_values.extend(values)
+        counts[row] = len(cols)
 
-    indptr = np.zeros(size + 1, dtype=np.int64)
-    np.cumsum(np.bincount(np.asarray(rows, dtype=np.int64), minlength=size), out=indptr[1:])
+    new_indptr = np.zeros(size + 1, dtype=np.int64)
+    np.cumsum(counts, out=new_indptr[1:])
     return CSRMatrix(
-        data=np.asarray(values, dtype=np.float64),
-        indices=np.asarray(cols, dtype=np.int64),
-        indptr=indptr,
-        shape=(size, size),
+        data=np.asarray(rebuilt_values, dtype=np.float64),
+        indices=np.asarray(rebuilt_cols, dtype=np.int64),
+        indptr=new_indptr,
+        shape=matrix.shape,
     )
 
 
@@ -267,7 +310,10 @@ def solve_spd(
 
     The ridge starts far below the matrix scale: a Tikhonov term comparable to
     the smallest eigenvalue stops being a regulariser and becomes part of the
-    answer, which is how a regularised solve ends up quietly wrong.
+    answer, which is how a regularised solve ends up quietly wrong. It is also
+    the value that costs the most, because the first attempts are the ones that
+    never converge -- so the effort goes into detecting that quickly rather
+    than into starting higher, which would bias every answer.
 
     A rank-deficient matrix has arbitrarily large solutions along its near-null
     direction, and a small residual says nothing about those. Escalating the

@@ -114,8 +114,12 @@ def solve_locally(solver, state: dict, centre_mm, radius_mm: float,
         pins=_spread_pins(len(patch.vertices)),
         blend=getattr(solver.settings, "blend", 0.0),
     )
-    solved, info = solve_chart(problem,
-                               iterations=getattr(solver.settings, "iterations", 400))
+    # A patch is a small, well-conditioned problem next to the chart it came
+    # from, so the chart's iteration budget is far more than it needs. Spending
+    # the full budget here is what turns a local re-solve back into a slow one.
+    solved, info = solve_chart(
+        problem, iterations=_patch_iterations(len(patch.vertices),
+                                              getattr(solver.settings, "iterations", 400)))
 
     layout = current.copy()
     layout[patch.vertices] = solved
@@ -123,6 +127,20 @@ def solve_locally(solver, state: dict, centre_mm, radius_mm: float,
         "the patch around the stroke did not converge, so it was left as it was"]
     return LocalResult(layout, patch, patch.vertices, info.converged,
                        (time.perf_counter() - started) * 1000.0, issues)
+
+
+def _patch_iterations(vertex_count: int, ceiling: int) -> int:
+    """Iterations a patch needs, from its size and the chart's own ceiling.
+
+    The conditioning that forces a whole chart to grind is local -- it comes
+    from the chart's overall shape and its pinned corners, neither of which a
+    patch carries. So the budget falls with the patch rather than staying at the
+    chart's, with a floor that still allows a poorly shaped patch to settle.
+    """
+    if vertex_count <= 0:
+        return 8
+    scaled = int(40 * np.sqrt(200.0 / vertex_count))
+    return int(np.clip(scaled, 24, ceiling))
 
 
 def full_solve(solver, state: dict) -> LocalResult:

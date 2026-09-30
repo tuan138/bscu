@@ -199,3 +199,62 @@ class TestLocalSolveIsCheap(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFocusedPreview(unittest.TestCase):
+    """The focused tier: the part of the chart under the cursor moves, fast."""
+
+    def test_a_focus_picks_the_chart_whose_faces_reach_that_point(self):
+        from bscu.core.unwrap_solver import UnwrapSolver
+
+        state, _layout = chart(24, 24)
+        picked = UnwrapSolver._focused_chart(
+            state, (5.0, 5.0), state["points"], state["faces"], state["islands"])
+
+        self.assertEqual(picked, 0)
+        self.assertIsNone(UnwrapSolver._focused_chart(
+            state, None, state["points"], state["faces"], state["islands"]))
+
+    def test_a_focused_preview_leaves_the_far_side_of_the_chart_alone(self):
+        from bscu.core.unwrap_solver import UnwrapSolver
+
+        state, _layout = chart(40, 40)
+        solver = UnwrapSolver()
+        solver.solve(state)
+        whole = solver.preview(state).layout
+
+        # Push the layout near the focus away from where it should be, so the
+        # re-solve has something to correct; an already-correct patch is
+        # supposed to come back unchanged.
+        near, far = (5.0, 5.0), (35.0, 35.0)
+        nudged = whole.copy()
+        bump = (np.hypot(state["points"][:, 0] - near[0],
+                         state["points"][:, 1] - near[1]) < 8.0)
+        nudged[bump, 0] += 3.0
+        state["layout"] = nudged
+        focused = solver.preview(state, focus=near, focus_radius_mm=4.0).layout
+        moved = np.linalg.norm(focused - whole, axis=1)
+        near_distance = np.hypot(state["points"][:, 0] - near[0],
+                                 state["points"][:, 1] - near[1])
+        far_distance = np.hypot(state["points"][:, 0] - far[0],
+                                state["points"][:, 1] - far[1])
+
+        self.assertLess(float(moved[near_distance < 4.0].max(initial=0.0)), 0.5,
+                        "the patch under the focus should be pulled back into place")
+        self.assertEqual(float(moved[far_distance > 20.0].max(initial=0.0)), 0.0,
+                         "vertices far from the focus must be left alone")
+
+    def test_a_focused_preview_stays_inside_the_interaction_budget(self):
+        from bscu.core.unwrap_solver import UnwrapSolver
+
+        state, _layout = chart(120, 120)
+        solver = UnwrapSolver()
+        solver.solve(state)
+        state["layout"] = solver.preview(state).layout
+
+        started = time.perf_counter()
+        solver.preview(state, focus=(20.0, 20.0), focus_radius_mm=4.0)
+        spent_ms = (time.perf_counter() - started) * 1000.0
+
+        self.assertLess(spent_ms, 100.0,
+                        f"a drag frame took {spent_ms:.0f} ms, over the 100 ms budget")

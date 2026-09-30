@@ -128,11 +128,19 @@ class UnwrapSolver:
         result.finish()
         return result.islands, result.layout
 
-    def preview(self, state: dict) -> Preview:
+    def preview(self, state: dict, focus=None, focus_radius_mm: float = 6.0
+                ) -> Preview:
         """One tier of the pipeline, bounded by the time budget.
 
         Returns whatever it managed: a solved layout, or the previous one if
         the budget ran out first.
+
+        ``focus`` is where the user is working. The budget is only ever checked
+        *between* charts, so a single chart large enough to blow it is spent in
+        full no matter what -- which is the common case once a model has a few
+        hundred thousand faces. With a focus given, the chart under it is solved
+        only around the focus and the rest is left for later, because that is
+        the part the user can actually see changing.
         """
         started = time.perf_counter()
         revision = revision_of(state, self.settings)
@@ -144,6 +152,7 @@ class UnwrapSolver:
         layout = self._carried_layout(len(points))
         solved: List[int] = []
         reused: List[int] = []
+        focused = self._focused_chart(state, focus, points, faces, islands)
 
         for chart in np.unique(islands):
             key = self._chart_key(state, chart, points, faces, islands, hints)
@@ -151,6 +160,11 @@ class UnwrapSolver:
             if cached is not None:
                 layout[vertices_of(faces, islands, chart)] = cached
                 reused.append(int(chart))
+                continue
+            if int(chart) == focused:
+                layout = self._solve_patch(chart, focus, focus_radius_mm, state,
+                                           points, faces, islands, layout)
+                solved.append(int(chart))
                 continue
             if solved and (time.perf_counter() - started) > self.budget:
                 self._latest = max(self._latest or 0, revision)
@@ -163,6 +177,36 @@ class UnwrapSolver:
         self._latest = max(self._latest or 0, revision)
         return Preview(revision, layout, islands, True, solved, reused,
                        (time.perf_counter() - started) * 1000.0, self)
+
+    @staticmethod
+    def _focused_chart(state, focus, points, faces, islands) -> Optional[int]:
+        """The chart holding the face nearest the focus, or None.
+
+        The focus is compared against face centres rather than vertices: a
+        focus is a position on the model, and the nearest vertex can sit on the
+        far side of a shared edge.
+        """
+        if focus is None or not islands.size:
+            return None
+        centre = np.asarray(focus, dtype=np.float64).ravel()[:2]
+        if centre.size != 2:
+            return None
+        tris = points[faces]
+        centres = tris.mean(axis=1)
+        distance = np.hypot(centres[:, 0] - centre[0], centres[:, 1] - centre[1])
+        return int(islands[int(np.argmin(distance))])
+
+    def _solve_patch(self, chart, focus, radius_mm, state, points, faces,
+                     islands, layout) -> np.ndarray:
+        """Solve only the neighbourhood of the focus, leaving the rest put."""
+        from .local_solve import solve_locally
+
+        try:
+            result = solve_locally(self, dict(state, layout=layout), focus,
+                                   radius_mm, state.get("hints"))
+        except (KeyError, ValueError):
+            return layout
+        return result.layout
 
     def _carried_layout(self, vertex_count: int) -> np.ndarray:
         """The last finished layout for a mesh of this size, or a flat one."""
