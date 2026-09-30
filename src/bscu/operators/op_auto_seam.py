@@ -24,7 +24,6 @@ from ..core.seam_graph import (
     charts_by_merge,
     charts_by_normal_clustering,
     face_normals,
-    select_chart_set,
 )
 from ..registry import register_classes, unregister_classes
 
@@ -63,7 +62,7 @@ def propose(obj, max_charts: int = 6, max_distortion: float = DEFAULT_MAX_DISTOR
     # Clustering gives a chart per normal, which on a symmetric blob is far more
     # than anyone asked for; the merge is what brings the number down, and the
     # gate is what keeps it honest.
-    clustered = charts_by_normal_clustering(faces, normals, chart_count=1)
+    clustered = charts_by_normal_clustering(faces, normals, chart_count=max_charts)
     labels = np.zeros(len(faces), dtype=np.int64)
     for index, chart in enumerate(clustered):
         labels[np.asarray(chart, dtype=np.int64)] = index
@@ -71,7 +70,9 @@ def propose(obj, max_charts: int = 6, max_distortion: float = DEFAULT_MAX_DISTOR
     if not candidates:
         candidates = clustered
 
-    chosen = select_chart_set(candidates, max_distortion) or candidates
+    # charts_by_merge already refuses a merge that would fold a chart past
+    # max_spread_deg, so the candidates it hands back are the gate's answer.
+    chosen = candidates
     proposals = [
         {
             "faces": np.asarray(chart, dtype=np.int64),
@@ -163,12 +164,14 @@ class BSCU_OT_AutoSeam(bpy.types.Operator):
     def _apply(self, obj, proposals) -> int:
         """Mark the accepted charts' borders as seams."""
         mesh = obj.data
+        faces = np.asarray([tuple(p.vertices) for p in mesh.polygons],
+                           dtype=np.int64)
         wanted = set()
         for proposal in proposals:
             if proposal["distortion"] > self.max_distortion:
                 continue
             chart = proposal["faces"]
-            for edge in _chart_border(chart):
+            for edge in _chart_border(chart, faces):
                 wanted.add(tuple(sorted(edge)))
 
         changed = 0
@@ -181,11 +184,16 @@ class BSCU_OT_AutoSeam(bpy.types.Operator):
         return changed
 
 
-def _chart_border(chart: np.ndarray) -> List[Tuple[int, int]]:
-    """The edges a chart uses exactly once: where it has to be cut."""
+def _chart_border(chart: np.ndarray, faces: np.ndarray) -> List[Tuple[int, int]]:
+    """The edges a chart uses exactly once: where it has to be cut.
+
+    ``chart`` holds face indices, so the faces themselves are gathered first:
+    the border is a property of the triangles, not of the numbers naming them.
+    """
     from ..core.seam_tools import edge_face_counts
 
-    return list(edge_face_counts(np.asarray(chart, dtype=np.int64)))
+    usage = edge_face_counts(np.asarray(faces, dtype=np.int64)[chart])
+    return [edge for edge, users in usage.items() if len(users) == 1]
 
 
 CLASSES = (BSCU_OT_AutoSeam,)

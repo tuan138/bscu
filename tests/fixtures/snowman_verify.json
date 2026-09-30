@@ -1,0 +1,30 @@
+{
+  "model": "snowman",
+  "before": {
+    "vertices": 3728,
+    "faces": 7444,
+    "dimensions_mm": [
+      48.212,
+      48.212,
+      152.759
+    ]
+  },
+  "steps": {
+    "auto_seam_ms": 353.8685999956215,
+    "apply_layout_ms": 0.17139999545179307
+  },
+  "auto_seam": "{'FINISHED'}",
+  "seams_marked": 1358,
+  "apply_layout": "{'CANCELLED'}",
+  "uv": {
+    "layer": "BSCU_UV_Active",
+    "coordinates": 22332
+  },
+  "distortion": {
+    "worst": 12253.5727,
+    "rms": 0.6609,
+    "flipped": 1343,
+    "degenerate": 4758
+  },
+  "total_ms": 354.0
+}
