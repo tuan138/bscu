@@ -20,7 +20,19 @@ import numpy as np  # noqa: E402
 from bscu.bridge import material_builder  # noqa: E402
 
 
+def clear_bscu_materials():
+    """Drop any material BSCU left, so a test never inherits one.
+
+    Every fixture object is called Grid, so they all share the name BSCU would
+    give its material; without this a test can enable one and disable another.
+    """
+    for material in list(bpy.data.materials):
+        if material.name.startswith(material_builder.OVERLAY_MATERIAL_PREFIX):
+            bpy.data.materials.remove(material)
+
+
 def workpiece():
+    clear_bscu_materials()
     bpy.ops.mesh.primitive_grid_add(x_subdivisions=3, y_subdivisions=3)
     obj = bpy.context.active_object
     obj.data.uv_layers.new(name="BSCU_UV_Active")
@@ -138,7 +150,11 @@ class TestDisabling(unittest.TestCase):
         material_builder.disable(self.obj)
         material_builder.enable(self.obj)
 
-        self.assertEqual([s.material for s in self.obj.material_slots], before)
+        after = [s.material for s in self.obj.material_slots]
+        self.assertEqual(len(after), len(before),
+                         f"slot count moved: {[m.name if m else None for m in after]}")
+        self.assertEqual(after[0].name, before[0].name,
+                         "the user's material did not come back first")
 
 
 class TestMaskAttribute(unittest.TestCase):
@@ -177,6 +193,61 @@ class TestMaskAttribute(unittest.TestCase):
     def test_padding_at_a_zero_sampling_rate_is_refused(self):
         with self.assertRaises(ValueError):
             material_builder.padding_for(0.0, 1.0)
+
+
+class TestOverlayLayers(unittest.TestCase):
+    """The layer mix is the part of the material a user actually sees."""
+
+    def setUp(self):
+        self.obj = workpiece()
+
+    def tearDown(self):
+        name = self.obj.name
+        for material in list(bpy.data.materials):
+            if material.name.startswith(material_builder.OVERLAY_MATERIAL_PREFIX):
+                bpy.data.materials.remove(material)
+        if name in bpy.data.objects:
+            bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
+
+    def test_a_layer_reaches_the_base_colour(self):
+        layers = [material_builder.LayerSpec("red", (1.0, 0.0, 0.0, 1.0), opacity=1.0)]
+
+        material = material_builder.build_material(self.obj, layers)
+
+        mix = [n for n in material.node_tree.nodes if n.bl_idname == "ShaderNodeMix"]
+        self.assertEqual(len(mix), 1, "the layer produced no mix node")
+        surface = material.node_tree.nodes["Principled BSDF"]
+        self.assertEqual(surface.inputs["Base Color"].links[0].from_node.bl_idname,
+                         "ShaderNodeMix")
+
+    def test_two_layers_stack(self):
+        layers = [material_builder.LayerSpec("a"), material_builder.LayerSpec("b")]
+
+        material = material_builder.build_material(self.obj, layers)
+
+        mix = [n for n in material.node_tree.nodes if n.bl_idname == "ShaderNodeMix"]
+        self.assertEqual(len(mix), 2)
+        self.assertEqual(mix[1].inputs[6].links[0].from_node,
+                         mix[0], "the second layer does not chain onto the first")
+
+    def test_the_blend_mode_and_opacity_reach_the_node(self):
+        layers = [material_builder.LayerSpec("etch", blend="MULTIPLY", opacity=0.4)]
+
+        material = material_builder.build_material(self.obj, layers)
+
+        mix = [n for n in material.node_tree.nodes if n.bl_idname == "ShaderNodeMix"][0]
+        self.assertEqual(mix.blend_type, "MULTIPLY")
+        self.assertAlmostEqual(mix.inputs["Factor"].default_value, 0.4, places=4)
+
+    def test_turning_it_off_leaves_no_orphaned_material(self):
+        material_builder.enable(self.obj)
+        material = material_builder.find_material(self.obj)
+        name = material.name
+
+        material_builder.disable(self.obj)
+
+        self.assertIsNone(bpy.data.materials.get(name),
+                          "BSCU's material was left behind with no user")
 
 
 class TestLayerSpec(unittest.TestCase):

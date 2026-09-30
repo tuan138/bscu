@@ -77,19 +77,31 @@ def build_material(obj, layers: Sequence[LayerSpec] = ()) -> bpy.types.Material:
     surface.location = (100, 0)
     tree.links.new(surface.outputs["BSDF"], output.inputs["Surface"])
 
-    previous = surface.outputs["BSDF"]
+    # Layers blend the base colour rather than the shader itself: a coloured
+    # overlay is paint on a surface, not a second surface. ShaderNodeMixShader
+    # has no data_type and no inputs[6] - it is ShaderNodeMix, in RGBA mode.
+    # The base colour is itself a node output, because a socket on the
+    # Principled node is an *input* and cannot feed another input.
+    base_colour = tree.nodes.new("ShaderNodeRGB")
+    base_colour.location = (-100, -200)
+    base_colour.outputs[0].default_value = surface.inputs["Base Color"].default_value
+    previous = base_colour.outputs[0]
     for index, layer in enumerate(layers):
-        mix = tree.nodes.new("ShaderNodeMixShader")
-        mix.location = (100 + (index + 1) * 260, 0)
+        place = (100 + index * 240, -200)
+        mix = tree.nodes.new("ShaderNodeMix")
+        mix.location = place
         mix.data_type = "RGBA"
+        mix.blend_type = layer.blend
+        mix.inputs["Factor"].default_value = float(layer.opacity)
         colour = tree.nodes.new("ShaderNodeRGB")
-        colour.location = (100 + (index + 1) * 260, -220)
+        colour.location = (place[0] - 180, place[1] - 120)
         colour.outputs[0].default_value = layer.colour
-        tree.links.new(colour.outputs[0], mix.inputs[6])
-        tree.links.new(previous, mix.inputs[1])
-        tree.links.new(surface.outputs["BSDF"], mix.inputs[2])
-        previous = mix.outputs[0]
-    tree.links.new(previous, output.inputs["Surface"])
+        # A and B are separate sockets; A carries what was already there and
+        # B the layer's own colour, so the layers stack in the order given.
+        tree.links.new(previous, mix.inputs[6])
+        tree.links.new(colour.outputs[0], mix.inputs[7])
+        previous = mix.outputs[2]
+    tree.links.new(previous, surface.inputs["Base Color"])
     return material
 
 
@@ -137,10 +149,16 @@ def disable(obj) -> bool:
     index = _overlay_slot(obj, material)
     if index is None:
         return False
-    # Removed from the mesh, not from the object: an object's slots follow its
-    # data, and popping there is not a thing Blender offers.
+    # The object-level override is cleared first. Popping only the mesh data
+    # leaves the object slot holding the material, and a datablock with a user
+    # is never collected - which is how BSCU's material ended up orphaned with
+    # the user's still in place.
+    obj.material_slots[index].material = None
     obj.data.materials.pop(index=index)
-    if not obj.data.materials:
+    # Removed on its own count, not on whether the mesh happens to have another
+    # material: a user material on the object would otherwise leave BSCU's
+    # datablock behind with no user, which is exactly what pack files warn about.
+    if material.users == 0:
         bpy.data.materials.remove(material)
     return True
 
